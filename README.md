@@ -2,6 +2,17 @@
 
 > Personal learning journal and proof-of-work for AI × Web3 School.
 
+---
+
+## Week 1 Proof-of-Work Pack
+
+> **总入口链接（本仓库即 Pack）**: https://github.com/NeoWeb3Nova/neo-ai-web3-school-cohort-0
+> **Pack 文件**: [submissions/week1-proof-of-work-pack.md](submissions/week1-proof-of-work-pack.md)
+> **提交时间**: 2026-05-26
+> **学员**: Neo（GitHub: NeoWeb3Nova）
+
+---
+
 ## 关于 AI × Web3 School
 
 AI × Web3 School 是一个面向 builders 的开源学习计划，聚焦 AI 与 Web3 交叉领域的真实问题：模型能力、Agent 工作流、工具调用、钱包、签名、支付、身份、权限、安全执行、治理协作和可验证记录。
