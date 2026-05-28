@@ -1,0 +1,69 @@
+{
+  "pactId": "pact-alice-commerce-001",
+  "version": "1.0",
+  "owner": "alice-human-operator",
+  "agentId": "agent-buyer-alice-001",
+  "purpose": "Purchase AI-generated marketing content for social media campaign",
+  
+  "budget": {
+    "currency": "USDC",
+    "max_usd": 50.0,
+    "spent_usd": 0.0,
+    "perTransactionMax": 5.0,
+    "perTransactionMin": 0.01,
+    "dailyLimit": 20.0,
+    "totalTransactionsMax": 10
+  },
+  
+  "scope": {
+    "allowedContracts": [
+      "0xProviderWalletAddressHere"
+    ],
+    "allowedNetworks": [
+      "eip155:84532"
+    ],
+    "allowedFunctions": [
+      "transfer",
+      "approve"
+    ],
+    "denyContracts": [],
+    "denyFunctions": [
+      "withdraw",
+      "transferOwnership",
+      "selfDestruct"
+    ]
+  },
+  
+  "timeWindow": {
+    "createdAt": "2026-05-28T00:00:00Z",
+    "expiresAt": "2026-05-31T00:00:00Z",
+    "timezone": "UTC",
+    "allowedHours": {
+      "start": "08:00",
+      "end": "22:00"
+    }
+  },
+  
+  "execution": {
+    "mode": "auto",
+    "approvalThreshold": 0,
+    "requireHumanConfirm": false,
+    "maxRetries": 3,
+    "retryBackoff": "exponential"
+  },
+  
+  "audit": {
+    "logLevel": "verbose",
+    "retentionDays": 90,
+    "exportFormat": "json",
+    "includeTxHash": true,
+    "includeGasDetails": true,
+    "alertOnAnomaly": true
+  },
+  
+  "metadata": {
+    "campaignId": "campaign-2026-spring",
+    "tags": ["marketing", "social-media", "ai-content"],
+    "notes": "Week 2 Module B experiment for AI x Web3 School"
+  }
+}
