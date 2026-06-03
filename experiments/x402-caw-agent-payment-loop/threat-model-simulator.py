@@ -80,13 +80,26 @@ class CoboCAWWallet:
         network_ok = payment_req.network in allowed_networks
         checks.append("network" if network_ok else "network_denied")
 
-        # 4. Time
+        # 4. Time (pact-level window)
         now = datetime.now(timezone.utc)
-        expires = datetime.fromisoformat(self.pact["timeWindow"]["expiresAt"].replace("Z", "+00:00"))
+        expires = datetime.fromisoformat(self.pact["time_window"]["expires_at"].replace("Z", "+00:00"))
         time_ok = now < expires
         checks.append("time" if time_ok else "time_expired")
 
-        # 5. Function blacklist (v2 增强)
+        # 4b. Payment-level expiration (x402 header)
+        pay_expires = datetime.fromisoformat(payment_req.expires_at.replace("Z", "+00:00"))
+        pay_time_ok = now < pay_expires
+        checks.append("pay_time" if pay_time_ok else "pay_time_expired")
+
+        # 5. per_transaction_max (基础检查，非只 v2)
+        per_tx_max = self.pact["budget"].get("per_transaction_max", float("inf"))
+        if price_usd > per_tx_max:
+            checks.append("per_tx_max_exceeded")
+            budget_ok = False
+        else:
+            checks.append("per_tx_max_ok")
+
+        # 6. Function blacklist
         deny_functions = self.pact["scope"].get("deny_functions", [])
         func_ok = payment_req.function_name not in deny_functions
         checks.append("function_ok" if func_ok else "function_denied")
@@ -94,18 +107,10 @@ class CoboCAWWallet:
         # v2 增强检查
         if version == "v2":
             exec_cfg = self.pact.get("execution", {})
-            auto_cond = exec_cfg.get("autoApproveConditions", {})
+            auto_cond = exec_cfg.get("auto_approve_conditions", {})
 
-            # 6. perTransactionMax
-            per_tx_max = self.pact["budget"].get("perTransactionMax", float("inf"))
-            if price_usd > per_tx_max:
-                checks.append("per_tx_max_exceeded")
-                budget_ok = False
-            else:
-                checks.append("per_tx_max_ok")
-
-            # 7. dailyLimit / accumulated check (session simulation)
-            daily_limit = auto_cond.get("maxDailyAccumulated", float("inf"))
+            # 7. daily_limit / accumulated check (session simulation)
+            daily_limit = auto_cond.get("max_daily_accumulated", float("inf"))
             if self.session_spent + price_usd > daily_limit:
                 checks.append("daily_accumulated_exceeded")
                 budget_ok = False
@@ -115,7 +120,7 @@ class CoboCAWWallet:
                 checks.append("daily_accumulated_ok")
 
             # 8. Hourly frequency
-            max_hourly = auto_cond.get("maxHourlyFrequency", float("inf"))
+            max_hourly = auto_cond.get("max_hourly_frequency", float("inf"))
             if self.hourly_tx_count + 1 > max_hourly:
                 checks.append("hourly_freq_exceeded")
                 budget_ok = False
@@ -125,7 +130,7 @@ class CoboCAWWallet:
                 checks.append("hourly_freq_ok")
 
             # 9. Reputation threshold (simulated)
-            reputation_min = auto_cond.get("reputationMinScore", 0.0)
+            reputation_min = auto_cond.get("reputation_min_score", 0.0)
             # 在模拟中假设 reputation=4.5，跳过详细检查
 
             # 10. Human confirm triggers
@@ -146,12 +151,12 @@ class CoboCAWWallet:
                 budget_ok = False
 
             # 13. Pause on consecutive failures
-            if self.consecutive_failures >= exec_cfg.get("pauseOnConsecutiveFailures", 3):
+            if self.consecutive_failures >= exec_cfg.get("pause_on_consecutive_failures", 3):
                 checks.append("paused_consecutive_failures")
                 budget_ok = False
                 alert_level = "blocked"
 
-        approved = budget_ok and scope_ok and network_ok and time_ok and func_ok
+        approved = budget_ok and scope_ok and network_ok and time_ok and pay_time_ok and func_ok
 
         reason = "All checks passed" if approved else (
             f"Failed: {[c for c in checks if any(x in c for x in ['insufficient', 'denied', 'exceeded', 'paused', 'expired'])]}"
@@ -181,63 +186,63 @@ class CoboCAWWallet:
 
 def make_pact_v1():
     return {
-        "pactId": "pact-v1-loose",
-        "budget": {"max_usd": 50.0, "spent_usd": 0.0, "perTransactionMax": 5.0},
+        "pact_id": "pact-v1-loose",
+        "budget": {"max_usd": 50.0, "spent_usd": 0.0, "per_transaction_max": 5.0},
         "scope": {
             "allowed_contracts": ["0xProviderWalletAddressHere"],
             "allowed_networks": ["eip155:84532"],
-            "deny_functions": ["selfDestruct", "transferOwnership", "withdraw"],
+            "deny_functions": ["self_destruct", "transfer_ownership", "withdraw"],
         },
-        "timeWindow": {
-            "createdAt": "2026-05-28T00:00:00Z",
-            "expiresAt": "2026-06-30T00:00:00Z",
+        "time_window": {
+            "created_at": "2026-05-28T00:00:00Z",
+            "expires_at": "2026-06-30T00:00:00Z",
         },
         "execution": {
             "mode": "auto",
-            "approvalThreshold": 0,
-            "requireHumanConfirm": False,
+            "approval_threshold": 0,
+            "require_human_confirm": False,
         },
     }
 
 
 def make_pact_v2():
     return {
-        "pactId": "pact-v2-secure",
-        "budget": {"max_usd": 50.0, "spent_usd": 0.0, "perTransactionMax": 5.0, "dailyLimit": 20.0},
+        "pact_id": "pact-v2-secure",
+        "budget": {"max_usd": 50.0, "spent_usd": 0.0, "per_transaction_max": 5.0, "daily_limit": 20.0},
         "scope": {
             "allowed_contracts": ["0xProviderWalletAddressHere"],
             "allowed_networks": ["eip155:84532"],
-            "deny_functions": ["selfDestruct", "transferOwnership", "withdraw", "setGuard", "upgrade"],
+            "deny_functions": ["self_destruct", "transfer_ownership", "withdraw", "set_guard", "upgrade"],
         },
-        "timeWindow": {
-            "createdAt": "2026-05-28T00:00:00Z",
-            "expiresAt": "2026-06-30T00:00:00Z",
+        "time_window": {
+            "created_at": "2026-05-28T00:00:00Z",
+            "expires_at": "2026-06-30T00:00:00Z",
         },
         "execution": {
             "mode": "hybrid",
-            "autoApproveConditions": {
-                "maxSingleAmount": 5.0,
-                "maxDailyAccumulated": 10.0,
-                "maxHourlyFrequency": 2,
-                "onlyPreviouslyInteractedContracts": True,
-                "allowedHoursOnly": True,
-                "reputationMinScore": 4.5,
+            "auto_approve_conditions": {
+                "max_single_amount": 5.0,
+                "max_daily_accumulated": 10.0,
+                "max_hourly_frequency": 2,
+                "only_previously_interacted_contracts": True,
+                "allowed_hours_only": True,
+                "reputation_min_score": 4.5,
             },
-            "requireHumanConfirm": True,
-            "humanConfirmTriggers": [
+            "require_human_confirm": True,
+            "human_confirm_triggers": [
                 "amount_exceeds_threshold",
                 "new_contract_first_interaction",
                 "frequency_anomaly",
                 "approve_operation_any_amount",
                 "near_pact_expiration",
             ],
-            "autoRejectConditions": {
-                "denyFunctions": ["selfDestruct", "transferOwnership", "setGuard", "upgrade"],
-                "maxSlippage": 2.0,
-                "maxGasRatio": 0.20,
+            "auto_reject_conditions": {
+                "deny_functions": ["self_destruct", "transfer_ownership", "set_guard", "upgrade"],
+                "max_slippage": 2.0,
+                "max_gas_ratio": 0.20,
             },
-            "pauseOnConsecutiveFailures": 2,
-            "autoRevokeSessionOnTimeout": True,
+            "pause_on_consecutive_failures": 2,
+            "auto_revoke_session_on_timeout": True,
         },
     }
 
@@ -324,9 +329,9 @@ def main():
         expected_v2="INTERCEPTED + HUMAN_REVIEW",
     )
 
-    # Attack 4: Deny Function → selfDestruct
+    # Attack 4: Deny Function → self_destruct
     run_attack(
-        name="A4: Deny Function → selfDestruct",
+        name="A4: Deny Function → self_destruct",
         description="Agent (or injected prompt) attempts to call a blacklisted function.",
         payment=PaymentRequirement(
             scheme="x402",
@@ -336,10 +341,10 @@ def main():
             pay_to="0xProviderWalletAddressHere",
             expires_at="2026-06-15T00:00:00Z",
             idempotency_key="deny-004",
-            function_name="selfDestruct",
+            function_name="self_destruct",
         ),
         expected_v1="INTERCEPTED (function_denied)",
-        expected_v2="BLOCKED (function_denied + autoReject)",
+        expected_v2="BLOCKED (function_denied + auto_reject)",
     )
 
     # Attack 5: Budget Exhaustion → 10× $4.99 (requires stateful simulation)
@@ -382,36 +387,25 @@ def main():
         print(f"         Hourly tx count: {wallet.hourly_tx_count}")
 
     # Attack 6: Time Window Bypass → expired Pact
-    run_attack(
-        name="A6: Time Window Bypass → Expired Pact",
-        description="Agent attempts payment after Pact has expired.",
-        payment=PaymentRequirement(
-            scheme="x402",
-            price="$1.00",
-            network="eip155:84532",
-            token="USDC",
-            pay_to="0xProviderWalletAddressHere",
-            expires_at="2026-06-15T00:00:00Z",
-            idempotency_key="time-006",
-            function_name="transfer",
-        ),
-        expected_v1="INTERCEPTED (time_expired)",
-        expected_v2="INTERCEPTED + SESSION_REVOKED",
-    )
-    # Manually override expiresAt to past for this test
-    print("  (Note: simulator internally sets expiresAt to past for this attack)")
+    print(f"\n{'='*60}")
+    print("ATTACK: A6: Time Window Bypass → Expired Pact")
+    print("Description: Agent attempts payment after Pact has expired.")
+    print("="*60)
     for version in ["v1", "v2"]:
         pact_cfg = make_pact_v1() if version == "v1" else make_pact_v2()
-        pact_cfg["timeWindow"]["expiresAt"] = "2026-01-01T00:00:00Z"  # past
+        pact_cfg["time_window"]["expires_at"] = "2026-01-01T00:00:00Z"  # past
         wallet = CoboCAWWallet(pact_cfg)
         pmt = PaymentRequirement(
             scheme="x402", price="$1.00", network="eip155:84532", token="USDC",
-            pay_to="0xProviderWalletAddressHere", expires_at="2026-01-01T00:00:00Z",
+            pay_to="0xProviderWalletAddressHere", expires_at="2026-06-15T00:00:00Z",
             idempotency_key="time-006", function_name="transfer",
         )
         result = wallet.check_pact(pmt, version=version)
         status = "✅ APPROVED" if result.approved else "❌ REJECTED"
-        print(f"  [{version}] {status} | {result.reason}")
+        intercept = "🛡️ INTERCEPTED" if not result.approved else "⚠️ BYPASSED"
+        print(f"  [{version}] {status} | {intercept}")
+        print(f"         Reason: {result.reason}")
+        print(f"         Alert: {result.alert_level}")
 
     # Attack 7: Replay Attack → reused idempotency key
     print(f"\n{'='*60}")
@@ -445,10 +439,10 @@ def main():
     print("""
 | Attack | v1 Result | v2 Result | Interceptor Layer |
 |--------|-----------|-----------|-------------------|
-| A1 Prompt Injection → Unauthorized Transfer | ❌ Blocked (scope) | ❌ Blocked + Alert | Policy Allowlist |
-| A2 Forged Return → Overpriced | ❌ Blocked (perTxMax) | ❌ Blocked (perTxMax) | Budget Hard Cap |
-| A3 Scope Bypass → Unknown Contract | ❌ Blocked (scope) | ❌ Blocked + Human Review | Allowlist + Guard |
-| A4 Deny Function → selfDestruct | ❌ Blocked (denyFunctions) | ❌ Blocked (autoReject) | Function Blacklist |
+|| A1 Prompt Injection → Unauthorized Transfer | ❌ Blocked (scope) | ❌ Blocked + Alert | Policy Allowlist |
+|| A2 Forged Return → Overpriced | ❌ Blocked (per_tx_max) | ❌ Blocked (per_tx_max) | Budget Hard Cap |
+|| A3 Scope Bypass → Unknown Contract | ❌ Blocked (scope) | ❌ Blocked + Human Review | Allowlist + Guard |
+|| A4 Deny Function → self_destruct | ❌ Blocked (deny_functions) | ❌ Blocked (auto_reject) | Function Blacklist |
 | A5 Budget Exhaustion → 10×$4.99 | ⚠️ PARTIAL BYPASS (full drain) | ❌ INTERCEPTED (daily+freq) | Accumulated + Freq |
 | A6 Time Window Bypass → Expired | ❌ Blocked (time) | ❌ Blocked + Revoke | Time Window |
 | A7 Replay Attack → Duplicate Key | ❌ Blocked (facilitator) | ❌ Blocked (facilitator) | x402 Facilitator |
