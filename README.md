@@ -1,6 +1,26 @@
 # Neo 的 AI × Web3 School 学习仓库
 
 > Personal learning journal and proof-of-work for AI × Web3 School.
+> **Current Focus**: Hackathon Build — PactGuard (Cobo Track)
+
+---
+
+## Week 4 Ready Pack — Hackathon PactGuard
+
+| 材料 | 链接 |
+|---|---|
+| Direction Card | [hackathon/direction-card.md](hackathon/direction-card.md) |
+| Proposal Memo | [submissions/hackathon-proposal-cobo-agentic-payment.md](submissions/hackathon-proposal-cobo-agentic-payment.md) |
+| Sprint Plan | [hackathon/sprint-plan.md](hackathon/sprint-plan.md) |
+| Risk Memo | [hackathon/risk-memo.md](hackathon/risk-memo.md) |
+| Sponsor/Mentor Questions | [hackathon/sponsor-mentor-questions.md](hackathon/sponsor-mentor-questions.md) |
+| Repo Skeleton | [hackathon/repo-skeleton.md](hackathon/repo-skeleton.md) |
+| Hackathon Overview | [hackathon/overview.md](hackathon/overview.md) |
+| **Demo Code** | [experiments/x402-caw-agent-payment-loop/](experiments/x402-caw-agent-payment-loop/) |
+
+> **赛道**: Cobo | Agentic Economy × Cobo Agentic Wallet  
+> **项目名**: PactGuard — AI Agent 的程序化支付约束与攻击拦截  
+> **提交截止**: 2026-06-13 12:00 UTC+8
 
 ---
 
