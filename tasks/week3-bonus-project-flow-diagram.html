@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PactGuard | 最小闭环流程图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0f19;
+    --card: #111827;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #22d3ee;
+    --success: #34d399;
+    --danger: #fb7185;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 24px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 32px;
+  }
+  .diagram-wrapper {
+    background: var(--card);
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    padding: 24px;
+    width: 100%;
+    max-width: 1100px;
+    overflow-x: auto;
+  }
+  .mermaid {
+    display: flex;
+    justify-content: center;
+  }
+  .legend {
+    margin-top: 28px;
+    width: 100%;
+    max-width: 1100px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .legend-card {
+    background: var(--card);
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .legend-card h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot.input { background: var(--accent); }
+  .dot.agent { background: var(--success); }
+  .dot.web3 { background: var(--warn); }
+  .dot.chain { background: #a78bfa; }
+  .dot.output { background: #60a5fa; }
+  .dot.audit { background: var(--muted); }
+  .legend-card ul {
+    margin: 0;
+    padding-left: 16px;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .footer {
+    margin-top: 24px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<h1>PactGuard | 项目最小闭环流程图</h1>
+<div class="subtitle">AI Agent x Web3 程序化支付约束与攻击拦截</div>
+
+<div class="diagram-wrapper">
+<div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#0e7490', 'primaryTextColor': '#e5e7eb', 'primaryBorderColor': '#22d3ee', 'lineColor': '#4b5563', 'secondaryColor': '#065f46', 'tertiaryColor': '#78350f', 'fontFamily': 'JetBrains Mono, monospace', 'fontSize': '14px' }}}%%
+
+graph TD
+    subgraph A["用户输入层"]
+        A1["用户预置 Pact 规则"] --> A2["授权 Buyer Agent"]
+        A2 --> A3["Session Key 权限委托"]
+    end
+
+    subgraph B["AI Agent 处理层"]
+        B1["Buyer Agent<br/>服务发现"] --> B2["ERC-8004<br/>声誉查询"]
+        B2 --> B3["x402 握手<br/>HTTP 402 响应"]
+        B3 --> B4["CAW Pact v2<br/>7 项约束检查"]
+    end
+
+    subgraph C["Web3 机制层"]
+        C1["协议: x402<br/>Payment Required"] --> C2["身份: ERC-8004<br/>Agent Registry"]
+        C2 --> C3["约束: CAW Pact<br/>预算 / 范围 / 时间"]
+        C3 --> C4{"检查通过?"}
+    end
+
+    subgraph D["链上 / SDK / 工具调用层"]
+        D1["Session Key 签名"] --> D2["ERC-4337 / Safe<br/>UserOperation"]
+        D2 --> D3["Base Sepolia<br/>USDC 转账"]
+        D3 --> D4["Facilitator<br/>结算 + Idempotency"]
+    end
+
+    subgraph E["输出结果层"]
+        E1["✅ 正常流<br/>服务获取成功"] --> E3["审计日志"]
+        E2["❌ 攻击流<br/>Pact 拦截拒绝"] --> E3
+    end
+
+    subgraph F["验证材料层"]
+        F1["结构化 JSON 审计日志"] --> F2["SHA-256 完整性校验"]
+        F2 --> F3["BaseScan 交易回执<br/>tx hash"]
+    end
+
+    A --> B
+    B --> C
+    C4 -- "通过" --> D
+    C4 -- "拒绝" --> E2
+    D --> E1
+    E --> F
+
+    style A fill:#083344,stroke:#22d3ee,stroke-width:2px,color:#e5e7eb
+    style B fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#e5e7eb
+    style C fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#e5e7eb
+    style D fill:#4c1d95,stroke:#a78bfa,stroke-width:2px,color:#e5e7eb
+    style E fill:#1e3a5f,stroke:#60a5fa,stroke-width:2px,color:#e5e7eb
+    style F fill:#1f2937,stroke:#9ca3af,stroke-width:2px,color:#e5e7eb
+
+    style C4 fill:#1f2937,stroke:#fbbf24,stroke-width:2px,color:#e5e7eb,stroke-dasharray: 5 5
+    style E1 fill:#065f46,stroke:#34d399,stroke-width:2px,color:#e5e7eb
+    style E2 fill:#881337,stroke:#fb7185,stroke-width:2px,color:#e5e7eb
+</div>
+</div>
+
+<div class="legend">
+  <div class="legend-card">
+    <h3><span class="dot input"></span> 用户输入</h3>
+    <ul>
+      <li>Pact 规则配置（预算 / 范围 / 时间）</li>
+      <li>Buyer Agent 授权</li>
+      <li>Session Key 权限委托</li>
+    </ul>
+  </div>
+  <div class="legend-card">
+    <h3><span class="dot agent"></span> AI Agent 处理</h3>
+    <ul>
+      <li>服务发现与声誉查询</li>
+      <li>x402 HTTP 402 握手</li>
+      <li>Pact v2 约束检查引擎</li>
+    </ul>
+  </div>
+  <div class="legend-card">
+    <h3><span class="dot web3"></span> Web3 机制</h3>
+    <ul>
+      <li>x402 支付协议</li>
+      <li>ERC-8004 Agent 身份</li>
+      <li>CAW Pact 约束层</li>
+    </ul>
+  </div>
+  <div class="legend-card">
+    <h3><span class="dot chain"></span> 链上 / SDK / 工具</h3>
+    <ul>
+      <li>Session Key + ERC-4337</li>
+      <li>Base Sepolia USDC 转账</li>
+      <li>Facilitator 结算与重放防护</li>
+    </ul>
+  </div>
+  <div class="legend-card">
+    <h3><span class="dot output"></span> 输出结果</h3>
+    <ul>
+      <li>正常流：服务成功获取</li>
+      <li>攻击流：Pact 拦截拒绝</li>
+      <li>全程审计日志输出</li>
+    </ul>
+  </div>
+  <div class="legend-card">
+    <h3><span class="dot audit"></span> 验证材料</h3>
+    <ul>
+      <li>结构化 JSON 审计记录</li>
+      <li>SHA-256 完整性校验</li>
+      <li>BaseScan 交易回执</li>
+    </ul>
+  </div>
+</div>
+
+<div class="footer">
+  PactGuard — Cobo Agentic Economy × Cobo Agentic Wallet | Week 3 Bonus Challenge | AI × Web3 School Cohort-0
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+</script>
+</body>
+</html>
