@@ -170,8 +170,9 @@
 ## 七、本人参赛信息
 
 **已锁定**：Cobo 赛道 —— Agentic Economy × Cobo Agentic Wallet
-**项目名**：PactGuard —— AI Agent 的程序化支付约束与攻击拦截
-**提案文件**：`submissions/hackathon-proposal-cobo-agentic-payment.md`
+**当前项目名**：OPC Agent Treasury —— 一人企业的 AI 员工财务卡包（正式方案）
+**提案文件**：`submissions/hackathon-proposal-cobo-opc-treasury.md`
+**废弃项目名**：PactGuard —— AI Agent 的程序化支付约束与攻击拦截（已废弃，见 `submissions/hackathon-proposal-cobo-agentic-payment.md`）
 **队伍**：Neo（单人，open for teammate）
 **从属**：AI × Web3 School Cohort-0
 
@@ -179,6 +180,7 @@
 
 | 文件 | 位置 |
 |------|------|
-| 每日打卡 | `daily/2026-06-01.md`, `daily/2026-06-02.md` |
-| 黑客松提案 | `submissions/hackathon-proposal-cobo-agentic-payment.md` |
+| 每日打卡 | `daily/` 目录 |
+| 正式提案 | `submissions/hackathon-proposal-cobo-opc-treasury.md` |
+| 废弃提案（存档） | `submissions/hackathon-proposal-cobo-agentic-payment.md` |
 | 黑客松概览 | `hackathon/overview.md` 本文件 |
