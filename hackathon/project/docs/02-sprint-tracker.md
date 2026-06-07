@@ -1,13 +1,13 @@
-# Sprint Tracker — PactGuard
+# Sprint Tracker | OPC Agent Treasury
 
-> 当前日期：2026-06-06（周六） ｜ 剩余：6 天（6/12 截止）
+> 当前日期：2026-06-07（周日） ｜ 剩余：5 天（6/12 截止）
 
 ---
 
 ## 状态总览
 
 ```
-[████████░░░░░░░░░░░░] 进度估算：~35%
+[████████████████████░░░░] 进度估算：~65%
 ```
 
 ---
@@ -16,10 +16,14 @@
 
 | # | 任务 | 完成时间 | 证据 |
 |---|---|---|---|
-| 1 | Mock 模式自包含运行 + v2 Pact 合并 | 6/03 | `experiments/x402-caw-agent-payment-loop/x402_client.py` |
-| 2 | 威胁模型模拟器 A6 修复 + 8 场景验证 | 6/03 | `threat-model-simulator.py` |
-| 3 | Daily 记录持续（6/3–6/5） | 6/5 | `daily/2026-06-*` |
-| 4 | Experiments 代码可运行 | 6/4 | `x402_client.py` + `x402_server.py` |
+| 1 | 方案定稿 | 6/06 | `submissions/hackathon-proposal-cobo-opc-treasury.md` |
+| 2 | CAW 深度调研报告 | 6/06 | `../../cobo-caw-research/report-v2.md` (39KB) |
+| 3 | MockCAWClient 核心开发 | 6/07 | `src/mock_caw_client.py` — 模拟 6 个模块 |
+| 4 | Agent 运行时 | 6/07 | `src/content_agent.py` (Content + Ad Agent) |
+| 5 | 审计报表生成器 | 6/07 | `src/audit_reporter.py` — Markdown/CSV 双格式 |
+| 6 | 异常拦截演示 | 6/07 | `src/threat_simulator.py` — 5 种攻击场景 |
+| 7 | 一键 Demo 入口 | 6/07 | `src/run_demo.py` — normal / attack / full |
+| 8 | project README 重构 | 6/07 | `project/README.md` — 痛点优先叙事 |
 
 ---
 
@@ -27,45 +31,35 @@
 
 | # | 任务 | 优先级 | 阻塞项 |
 |---|---|---|---|
-| 1 | 将 experiments 代码迁移到 `project/src/` | P0 | 需确认项目结构 |
-| 2 | 接入真实 x402 SDK（评估可用性） | P0 | SDK 发布状态未知 |
-| 3 | CAW 测试环境申请 | P1 | 需填写表单，等待审批 |
-| 4 | Demo 视频脚本 | P1 | 需代码端稳定后录制 |
-
----
+| 1 | Demo 视频录制 | P0 | 需要定稿脚本（约 3 分钟） |
+| 2 | 提交物结构整理 | P0 | 确认所有必备文件齐全 |
 
 ## 待启动 ⏳
 
 | # | 任务 | 计划日期 | 依赖 |
 |---|---|---|---|
-| 1 | Base Sepolia USDC 水龙头申请 | 6/7 | 需测试网钱包 |
-| 2 | README 重构（项目级） | 6/7–8 | 代码稳定 |
-| 3 | Demo 视频录制与精剪 | 6/7 | 脚本完成 |
-| 4 | 审计日志报表生成器 | 6/9 | 运行时数据 |
-| 5 | 提交前打包核对 | 6/11 | 全部完成 |
+| 1 | Demo 视频脚本定稿 | 6/07 晚 | 无 |
+| 2 | Demo 视频录制 | 6/08 | 脚本定稿 |
+| 3 | 测试网交易证据（Base Sepolia） | 6/08-09 | 需水龙头 + USDC |
+| 4 | 最终提交检查 | 6/11 | 全部完成 |
+| 5 | 官方平台提交 | 6/12 10:00 | 提交物齐全 |
 
 ---
 
 ## 每日检查点
 
 每日 21:00 前更新本文件对应日期区块：
-- 今日完成任务（附 commit hash 或文件路径）
-- 明日最高优先级任务（仅限 1 项）
-- 阻塞项 / 需 mentor 支持的问题
-- 真实 SDK / 测试网进展
-
-### 2026-06-06（周六）
-
-- [ ] 今日完成：
-- [ ] 明日最高优先级：
-- [ ] 阻塞项：
-- [ ] SDK/测试网进展：
+- [ ] 今日完成任务（附 commit hash 或文件路径）
+- [ ] 明日最高优先级任务（仅限 1 项）
+- [ ] 阻塞项 / 需 mentor 支持的问题
+- [ ] SDK/测试网进展
 
 ### 2026-06-07（周日）
 
-- [ ] 今日完成：
-- [ ] 明日最高优先级：
-- [ ] 阻塞项：
+- [x] 今日完成：MockCAWClient + Agent Runtime + Audit + Threat + run_demo + README 重构
+- [ ] 明日最高优先级：Demo 视频脚本定稿 + 录制
+- [ ] 阻塞项：无
+- [ ] SDK/测试网进展：Mock 路径已固化，真实 SDK 待查
 
 ### 2026-06-08（周一）
 
@@ -91,11 +85,10 @@
 - [ ] 明日最高优先级：
 - [ ] 阻塞项：
 
-### 2026-06-12（周五）✦ 提交日
+### 2026-06-12（周五）✆ 提交日
 
-- [ ] 11:00 提前提交检查
+- [ ] 10:00 提前提交检查
 - [ ] 12:00 提交截止确认
-- [ ] Demo Day 准备
 
 ---
 
@@ -103,8 +96,12 @@
 
 | # | 风险 | 影响 | 缓解措施 | 状态 |
 |---|---|---|---|---|
-| R1 | x402 Python SDK 未发布 | 无法真实 402 握手 | Fallback Mock 已就绪，README 明确标注 | 🟡 监控 |
-| R2 | CAW SDK 未公开 | 无法真实 Pact 验证 | Mock Pact Engine 已就绪 | 🟡 监控 |
-| R3 | Base Sepolia 水龙头限额 | 测试网无 Gas | 多个水龙头源备选 | 🟢 低风险 |
-| R4 | 时间不足，Demo 视频未录制 | 提交不完整 | 6/7 优先完成脚本，6/8 必须录制 | 🔴 高风险 |
-| R5 | 敏感信息泄露到 GitHub | 取消参赛资格 | .env.example 替代 .env，pre-commit 检查 | 🟡 待执行 |
+| R1 | CAW SDK 未发布 | 无法真实 Pact 验证 | Mock 路径已固化，README 明确标注 | 🟢 已缓解 |
+| R2 | Base Sepolia 水龙头限额 | 测试网无 Gas | 多个水龙头备选 | 🟡 低风险 |
+| R3 | Demo 视频未录制 | 提交不完整 | 今日定稿脚本，明日必须录制 | 🔴 高风险 |
+| R4 | 敏感信息泄露到 GitHub | 取消参赛资格 | .env.example 替代 .env，pre-commit 检查 | 🟡 待执行 |
+
+---
+
+> 项目: OPC Agent Treasury — 一人企业的 AI 员工财务卡包  
+> 赛道: Cobo | 提交日: 2026-06-12
