@@ -30,7 +30,7 @@ export interface CardPact {
   budget: Budget;
   vendor_whitelist: Vendor[];
   cooldown_hours: number;
-  time_window: TimeWindow;
+  time_window?: TimeWindow;
   created_at: string;
   expires_at: string;
   api_key: string;

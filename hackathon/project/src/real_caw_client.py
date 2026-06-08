@@ -174,16 +174,14 @@ class RealCAWClient:
         if not dest_addrs:
             raise ValueError("No valid vendor addresses provided. Set VENDOR_*_ADDR env vars.")
 
-        # 构建 usage_limits — 同时覆盖单笔、月度、频率
-        usage_limits: Dict[str, Any] = {}
-        # 月度预算窗口
-        usage_limits["rolling_30d"] = {
-            "amount_usd_gt": str(monthly_budget),
-            "tx_count_gt": 9999,  # 宽松，主要靠金额限制
+        # 构建 usage_limits — 仅使用 SDK 支持的固定字段
+        # 注意：CAW Policy Engine 的 usage_limits 只接受预定义键名
+        usage_limits: Dict[str, Any] = {
+            "rolling_30d": {
+                "amount_usd_gt": str(monthly_budget),
+                "tx_count_gt": 9999,  # 宽松，主要靠金额限制
+            }
         }
-        # 频率限制（近似 cooldown）
-        window_key = f"rolling_{int(cooldown_hours)}h"
-        usage_limits[window_key] = {"tx_count_gt": 1}
 
         policies = [
             {
@@ -407,7 +405,25 @@ class RealCAWClient:
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
             return self._payment_result(tx, card, "DENIED", reason)
 
-        # ── Stage 2-3: 交由 CAW Policy Engine 处理 ──
+        # ── Cooldown 检查（本地层实现，因为 Policy Engine 不支持动态时间窗口）──
+        cooldown_hours = card.get("cooldown_hours", 0)
+        if cooldown_hours > 0:
+            cooldown_delta = timedelta(hours=cooldown_hours)
+            for past_tx in reversed(self._transactions):
+                if (
+                    past_tx.get("card_id") == card_id
+                    and past_tx.get("vendor") == vendor
+                    and past_tx.get("status") == "APPROVED"
+                ):
+                    try:
+                        tx_time = datetime.fromisoformat(past_tx["timestamp"].replace("Z", "+00:00"))
+                        if now - tx_time < cooldown_delta:
+                            reason = f"PERMISSION_DENIED: cooldown {cooldown_hours}h not elapsed since last payment to {vendor}"
+                            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+                            return self._payment_result(tx, card, "DENIED", reason)
+                    except (ValueError, KeyError):
+                        pass
+                    break
         request_id = meta.get("request_id") or f"pay-{now.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}"
 
         try:

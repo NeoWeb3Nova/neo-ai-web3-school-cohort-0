@@ -428,19 +428,28 @@ export default function Cards() {
 
  {/* Time Window */}
  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs">
- <div className="flex items-center gap-1.5 text-text-secondary">
- <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
- <span>
- {new Date(card.time_window.start).toLocaleDateString()} —{' '}
- {new Date(card.time_window.end).toLocaleDateString()}
- </span>
- </div>
- <div className="flex items-center gap-1.5 text-text-secondary">
- <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
- <span>
- {card.time_window.allowed_hours_start} — {card.time_window.allowed_hours_end}
- </span>
- </div>
+   {card.time_window ? (
+     <>
+       <div className="flex items-center gap-1.5 text-text-secondary">
+         <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+         <span>
+           {new Date(card.time_window.start).toLocaleDateString()} —{' '}
+           {new Date(card.time_window.end).toLocaleDateString()}
+         </span>
+       </div>
+       <div className="flex items-center gap-1.5 text-text-secondary">
+         <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+         <span>
+           {card.time_window.allowed_hours_start} — {card.time_window.allowed_hours_end}
+         </span>
+       </div>
+     </>
+   ) : (
+     <div className="flex items-center gap-1.5 text-text-secondary">
+       <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+       <span>Cooldown: {card.cooldown_hours}h between payments</span>
+     </div>
+   )}
  </div>
 
  {/* API Key */}
