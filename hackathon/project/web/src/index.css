@@ -3,6 +3,76 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    /* Impeccable light mode palette */
+    --color-bg: #fdfcfa;
+    --color-paper: #f5f2ed;
+    --color-cream: #fdfcfa;
+    --color-ink: #2c2925;
+    --color-text: #3d3a36;
+    --color-charcoal: #3d3a36;
+    --color-ash: #6b6558;
+    --color-muted: #8a8478;
+    --color-mist: rgba(61, 58, 54, 0.12);
+    --color-hover: #ebe8e2;
+    --color-elevated: #e4e1da;
+    --color-rule: rgba(61, 58, 54, 0.12);
+    --color-rule-hover: rgba(61, 58, 54, 0.22);
+
+    /* Accents */
+    --color-kinpaku: #d4a843;
+    --color-kinpaku-pale: #e8d9a8;
+    --color-kinpaku-rich: #b8942e;
+    --color-kinpaku-deep: #a07e20;
+    --color-patina: #5a9e8a;
+    --color-patina-pale: #8ec4b4;
+    --color-patina-deep: #3d7a68;
+    --color-vermilion: #b85c4f;
+    --color-vermilion-pale: #d98a7e;
+    --color-amber: #c98b3f;
+    --color-slate: #7a8e9e;
+
+    /* Layout */
+    --site-header-height: 62px;
+    --width-content: 900px;
+    --width-page: 1400px;
+
+    /* Easing */
+    --ease-im: cubic-bezier(.2, .8, .2, 1);
+    --ease-out: cubic-bezier(.16, 1, .3, 1);
+    --ease-out-quint: cubic-bezier(.22, 1, .36, 1);
+  }
+
+  .dark {
+    /* Impeccable dark mode palette */
+    --color-bg: #1a1814;
+    --color-paper: #12100c;
+    --color-cream: #141210;
+    --color-ink: #e8e6e3;
+    --color-text: #e0deda;
+    --color-charcoal: #b8b4ae;
+    --color-ash: #9a958e;
+    --color-muted: #78746e;
+    --color-mist: rgba(200, 198, 194, 0.12);
+    --color-hover: #25221e;
+    --color-elevated: #2e2a24;
+    --color-rule: rgba(200, 198, 194, 0.16);
+    --color-rule-hover: rgba(200, 198, 194, 0.28);
+
+    /* Accents stay vivid in dark */
+    --color-kinpaku: #e0b85a;
+    --color-kinpaku-pale: #f0d9a0;
+    --color-kinpaku-rich: #c9a040;
+    --color-kinpaku-deep: #b08a30;
+    --color-patina: #6abfa8;
+    --color-patina-pale: #8ec4b4;
+    --color-patina-deep: #4d9a82;
+    --color-vermilion: #c96e60;
+    --color-vermilion-pale: #d98a7e;
+    --color-amber: #d89c52;
+    --color-slate: #8aa0b0;
+  }
+
   html, body, #root {
     height: 100%;
     margin: 0;
@@ -11,10 +81,11 @@
 
   body {
     font-family: theme('fontFamily.sans');
-    background-color: theme('colors.bg-primary');
-    color: theme('colors.text-primary');
+    background-color: var(--color-bg);
+    color: var(--color-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s var(--ease-im), color 0.3s var(--ease-im);
   }
 
   #root {
@@ -28,7 +99,6 @@
     flex-direction: column;
   }
 
-  /* Display type for hero / section titles */
   h1, h2, h3 {
     text-wrap: balance;
   }
@@ -39,112 +109,120 @@
 }
 
 @layer utilities {
-  /* Kinpaku glass card — warm tinted, subtle inner glow */
+  /* Impeccable card — minimal radius, thin border, no shadow */
   .glass-card {
-    background-color: theme('colors.bg-card');
-    border: 1px solid theme('colors.border-default');
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: 2px;
+    transition: border-color 0.2s var(--ease-im), background-color 0.2s var(--ease-im);
   }
 
   .glass-card:hover {
-    border-color: theme('colors.border-hover');
-    box-shadow: inset 0 1px 0 0 rgba(247, 244, 239, 0.03);
+    border-color: var(--color-rule-hover);
   }
 
-  /* Elevated kinpaku card — for featured / hero sections */
+  /* Elevated card — for featured sections */
   .glass-card-elevated {
-    background: linear-gradient(180deg, theme('colors.bg-card') 0%, theme('colors.bg-surface') 100%);
-    border: 1px solid theme('colors.border-default');
-    box-shadow: inset 0 1px 0 0 rgba(247, 244, 239, 0.04), 0 1px 2px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(180deg, var(--color-paper) 0%, var(--color-bg) 100%);
+    border: 1px solid var(--color-rule);
+    border-radius: 2px;
   }
 
-  /* Kinpaku button — primary gold action */
+  /* Primary gold button — kinpaku */
   .btn-gold {
-    background: linear-gradient(180deg, #e0b85a 0%, #c49a2c 100%);
-    color: theme('colors.bg-primary');
+    background-color: var(--color-kinpaku);
+    color: var(--color-bg);
     font-weight: 600;
-    border: 1px solid rgba(212, 168, 67, 0.4);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 2px rgba(0, 0, 0, 0.25);
-    transition: all 0.15s ease;
+    font-size: 0.9rem;
+    border: 1px solid var(--color-kinpaku);
+    border-radius: 2px;
+    transition: all 0.15s var(--ease-im);
   }
   .btn-gold:hover {
-    background: linear-gradient(180deg, #e5c06e 0%, #caa030 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 8px rgba(212, 168, 67, 0.15);
+    background-color: var(--color-kinpaku-rich);
+    border-color: var(--color-kinpaku-rich);
   }
   .btn-gold:active {
     transform: translateY(1px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 1px rgba(0, 0, 0, 0.2);
   }
 
-  /* Kinpaku ghost button */
+  /* Ghost button — subtle outline */
   .btn-ghost {
     background: transparent;
-    color: theme('colors.text-secondary');
-    border: 1px solid theme('colors.border-default');
-    transition: all 0.15s ease;
+    color: var(--color-ash);
+    border: 1px solid var(--color-rule);
+    border-radius: 2px;
+    transition: all 0.15s var(--ease-im);
+    font-size: 0.9rem;
   }
   .btn-ghost:hover {
-    background: theme('colors.bg-hover');
-    color: theme('colors.text-primary');
-    border-color: theme('colors.border-hover');
+    background: var(--color-hover);
+    color: var(--color-text);
+    border-color: var(--color-rule-hover);
   }
 
-  /* Form input kinpaku style */
+  /* Form input — impeccable style */
   .input-kinpaku {
-    background-color: theme('colors.bg-primary');
-    border: 1px solid theme('colors.border-default');
-    color: theme('colors.text-primary');
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-rule);
+    color: var(--color-text);
+    border-radius: 2px;
+    transition: border-color 0.15s var(--ease-im), box-shadow 0.15s var(--ease-im);
+    font-size: 0.95rem;
   }
   .input-kinpaku::placeholder {
-    color: theme('colors.text-muted');
+    color: var(--color-muted);
   }
   .input-kinpaku:focus {
     outline: none;
-    border-color: theme('colors.accent-gold');
-    box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.08);
+    border-color: var(--color-kinpaku);
+    box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.12);
   }
   .input-kinpaku.error {
-    border-color: theme('colors.accent-coral');
+    border-color: var(--color-vermilion);
   }
   .input-kinpaku.error:focus {
-    box-shadow: 0 0 0 3px rgba(184, 92, 79, 0.08);
+    box-shadow: 0 0 0 3px rgba(184, 92, 79, 0.12);
   }
 
-  /* Status badges */
+  /* Status badges — impeccable palette */
   .status-approved {
-    background-color: rgba(90, 158, 138, 0.12);
-    color: theme('colors.accent-patina');
+    background-color: rgba(90, 158, 138, 0.1);
+    color: var(--color-patina);
     border: 1px solid rgba(90, 158, 138, 0.15);
+    border-radius: 2px;
   }
 
   .status-denied {
-    background-color: rgba(184, 92, 79, 0.12);
-    color: theme('colors.accent-coral');
+    background-color: rgba(184, 92, 79, 0.1);
+    color: var(--color-vermilion);
     border: 1px solid rgba(184, 92, 79, 0.15);
+    border-radius: 2px;
   }
 
   .status-warning {
-    background-color: rgba(201, 139, 63, 0.12);
-    color: theme('colors.accent-amber');
+    background-color: rgba(201, 139, 63, 0.1);
+    color: var(--color-amber);
     border: 1px solid rgba(201, 139, 63, 0.15);
+    border-radius: 2px;
   }
 
   .status-info {
-    background-color: rgba(122, 142, 158, 0.12);
-    color: theme('colors.accent-slate');
+    background-color: rgba(122, 142, 158, 0.1);
+    color: var(--color-slate);
     border: 1px solid rgba(122, 142, 158, 0.15);
+    border-radius: 2px;
   }
 
-  /* Divider kinpaku */
+  /* Divider */
   .divider-kinpaku {
     height: 1px;
-    background: linear-gradient(90deg, transparent 0%, theme('colors.border-hover') 50%, transparent 100%);
+    background: linear-gradient(90deg, transparent 0%, var(--color-rule-hover) 50%, transparent 100%);
   }
 
-  /* Subtle warm gradient text */
+  /* Gradient text — kinpaku */
   .text-gradient-gold {
-    background: linear-gradient(135deg, #e8c97a 0%, #d4a843 50%, #c49a2c 100%);
+    background: linear-gradient(135deg, var(--color-kinpaku-pale) 0%, var(--color-kinpaku) 50%, var(--color-kinpaku-rich) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -161,34 +239,34 @@
   }
 }
 
-/* Scrollbar — warm dark */
+/* Scrollbar — impeccable */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: theme('colors.bg-primary');
+  background: var(--color-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: theme('colors.border-hover');
+  background: var(--color-rule-hover);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: theme('colors.text-muted');
+  background: var(--color-ash);
 }
 
-/* Focus-visible — patina tint for accessibility */
+/* Focus-visible — patina tint */
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible {
-  outline: 2px solid theme('colors.accent-patina / 50%');
+  outline: 2px solid rgba(90, 158, 138, 0.5);
   outline-offset: 2px;
 }
 
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid theme('colors.accent-patina / 50%');
+  outline: 2px solid rgba(90, 158, 138, 0.5);
   outline-offset: 0;
 }
 
@@ -209,11 +287,11 @@ textarea:focus-visible {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.4s var(--ease-out) forwards;
 }
 
 .animate-slide-in {
-  animation: slideInRight 0.3s ease-out forwards;
+  animation: slideInRight 0.3s var(--ease-out) forwards;
 }
 
 .animate-pulse-glow {
@@ -234,27 +312,25 @@ textarea:focus-visible {
 /* Mobile touch target improvements */
 @media (max-width: 640px) {
   .glass-card {
-    border-radius: 0.75rem;
+    border-radius: 2px;
   }
-  
-  /* Ensure tables don't cause layout shift */
   table {
     font-size: 0.75rem;
   }
 }
 
-/* Ensure select options are readable in dark mode */
+/* Ensure select options are readable */
 select option {
-  background-color: theme('colors.bg-card');
-  color: theme('colors.text-primary');
+  background-color: var(--color-paper);
+  color: var(--color-text);
 }
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
   .glass-card {
-    border-color: theme('colors.border-hover');
+    border-color: var(--color-rule-hover);
   }
   .text-text-secondary {
-    color: theme('colors.text-primary');
+    color: var(--color-text);
   }
 }

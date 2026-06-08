@@ -1,172 +1,226 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  CreditCard,
-  Bot,
-  ShieldAlert,
-  FileText,
-  Wallet,
-  Bell,
-  Menu,
-  X,
+ LayoutDashboard,
+ CreditCard,
+ Bot,
+ ShieldAlert,
+ FileText,
+ Wallet,
+ Sun,
+ Moon,
+ Monitor,
 } from 'lucide-react';
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/cards', label: 'Cards', icon: CreditCard },
-  { path: '/agent', label: 'Agent Console', icon: Bot },
-  { path: '/attack', label: 'Attack Demo', icon: ShieldAlert },
-  { path: '/audit', label: 'Audit Report', icon: FileText },
+ { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+ { path: '/cards', label: 'Cards', icon: CreditCard },
+ { path: '/agent', label: 'Agent', icon: Bot },
+ { path: '/attack', label: 'Attack', icon: ShieldAlert },
+ { path: '/audit', label: 'Audit', icon: FileText },
 ];
 
+type ThemeMode = 'auto' | 'light' | 'dark';
+
+function getSystemTheme(): boolean {
+ return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function resolveTheme(mode: ThemeMode): boolean {
+ if (mode === 'auto') return getSystemTheme();
+ return mode === 'dark';
+}
+
 export default function Layout() {
-  const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+ const location = useLocation();
+ const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+ return (localStorage.getItem('theme') as ThemeMode) || 'auto';
+ });
+ const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024);
-      if (window.innerWidth >= 1024) setSidebarOpen(false);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+ useEffect(() => {
+ const isDark = resolveTheme(themeMode);
+ if (isDark) {
+ document.documentElement.classList.add('dark');
+ } else {
+ document.documentElement.classList.remove('dark');
+ }
+ localStorage.setItem('theme', themeMode);
+ }, [themeMode]);
 
-  useEffect(() => {
-    if (isMobile) setSidebarOpen(false);
-  }, [location.pathname, isMobile]);
+ useEffect(() => {
+ if (themeMode === 'auto') {
+ const mq = window.matchMedia('(prefers-color-scheme: dark)');
+ const handler = (e: MediaQueryListEvent) => {
+ if (e.matches) {
+ document.documentElement.classList.add('dark');
+ } else {
+ document.documentElement.classList.remove('dark');
+ }
+ };
+ mq.addEventListener('change', handler);
+ return () => mq.removeEventListener('change', handler);
+ }
+ }, [themeMode]);
 
-  const activeLabel = navItems.find((n) => n.path === location.pathname)?.label || 'Dashboard';
+ useEffect(() => {
+ setMobileNavOpen(false);
+ }, [location.pathname]);
 
-  return (
-    <div className="flex h-screen bg-bg-primary text-text-primary font-sans overflow-hidden">
-      {/* Mobile Sidebar Overlay */}
-      {isMobile && sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm transition-opacity"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+ const cycleTheme = () => {
+ setThemeMode((prev) => {
+ if (prev === 'auto') return 'light';
+ if (prev === 'light') return 'dark';
+ return 'auto';
+ });
+ };
 
-      {/* Sidebar */}
-      <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-60 bg-bg-surface border-r border-border-default flex flex-col shrink-0 transition-transform duration-300 ease-out ${
-          isMobile ? (sidebarOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'
-        }`}
-      >
-        {/* Logo */}
-        <div className="h-16 flex items-center px-5 border-b border-border-default">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent-patina/15 flex items-center justify-center border border-accent-patina/20">
-              <Wallet className="w-[18px] h-[18px] text-accent-patina" strokeWidth={1.5} />
-            </div>
-            <div>
-              <h1 className="text-sm font-bold tracking-tight font-display italic">OPC Treasury</h1>
-              <p className="text-[10px] text-text-muted leading-tight tracking-widest uppercase">Agent Finance OS</p>
-            </div>
-          </div>
-          {isMobile && (
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="ml-auto w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-            >
-              <X className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-          )}
-        </div>
+ const themeLabel = themeMode === 'auto' ? 'Auto' : themeMode === 'light' ? 'Light' : 'Dark';
+ const ThemeIcon = themeMode === 'auto' ? Monitor : themeMode === 'light' ? Sun : Moon;
 
-        {/* Navigation */}
-        <nav className="flex-1 py-4 px-3 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={() => isMobile && setSidebarOpen(false)}
-                className={({ isActive }) =>
-                  `relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group ${
-                    isActive
-                      ? 'bg-accent-gold/8 text-accent-gold'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
-                  }`
-                }
-              >
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-accent-gold" />
-                )}
-                <Icon
-                  className={`w-[18px] h-[18px] shrink-0 transition-colors ${
-                    isActive
-                      ? 'text-accent-gold'
-                      : 'text-text-muted group-hover:text-text-secondary'
-                  }`}
-                  strokeWidth={1.5}
-                />
-                <span className="flex-1">{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
+ return (
+ <div className="min-h-screen bg-bg-primary text-text-primary font-sans">
+ {/* Site Header — impeccable style */}
+ <header
+ className="fixed top-0 inset-x-0 z-50 border-b border-border-default"
+ style={{
+ height: 'var(--site-header-height)',
+ backgroundColor: 'var(--color-bg)',
+ backdropFilter: 'blur(12px)',
+ WebkitBackdropFilter: 'blur(12px)',
+ }}
+ >
+ <div className="mx-auto h-full flex items-center justify-between" style={{ maxWidth: 'var(--width-page)', padding: '0 24px' }}>
+ {/* Wordmark */}
+ <NavLink to="/" className="flex items-center gap-2 shrink-0 group">
+ <Wallet className="w-5 h-5" strokeWidth={1.5} style={{ color: 'var(--color-kinpaku)' }} />
+ <span
+ className="font-wordmark font-medium tracking-widest select-none"
+ style={{ fontSize: '1.15rem', letterSpacing: '0.28em', color: 'var(--color-text)' }}
+ >
+ OPC TREASURY
+ </span>
+ </NavLink>
 
-        {/* Bottom — Owner Profile */}
-        <div className="p-4 border-t border-border-default">
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-8 h-8 rounded-full bg-accent-patina flex items-center justify-center text-[11px] font-bold text-bg-primary shrink-0">
-              N
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate">Neo</p>
-              <p className="text-[10px] text-text-muted truncate">OPC Owner</p>
-            </div>
-            <div className="w-2 h-2 rounded-full bg-accent-patina ring-2 ring-bg-surface" />
-          </div>
-        </div>
-      </aside>
+ {/* Desktop Navigation */}
+ <nav className="hidden md:flex items-center" style={{ gap: '6px' }}>
+ {navItems.map((item) => {
+ const Icon = item.icon;
+ const isActive = location.pathname === item.path;
+ return (
+ <NavLink
+ key={item.path}
+ to={item.path}
+ className={({ isActive }) =>
+ `relative flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors duration-200 ${
+ isActive
+ ? ''
+ : 'hover:opacity-80'
+ }`
+ }
+ style={{
+ color: isActive ? 'var(--color-kinpaku)' : 'var(--color-ash)',
+ borderRadius: '2px',
+ }}
+ >
+ <Icon className="w-[15px] h-[15px]" strokeWidth={1.5} />
+ <span>{item.label}</span>
+ {isActive && (
+ <span
+ className="absolute bottom-0 left-3 right-3 h-px"
+ style={{ backgroundColor: 'var(--color-kinpaku)' }}
+ />
+ )}
+ </NavLink>
+ );
+ })}
+ </nav>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Header */}
-        <header className="h-14 bg-bg-surface/60 backdrop-blur-md border-b border-border-default flex items-center justify-between px-4 lg:px-6 shrink-0 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {isMobile && (
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors shrink-0"
-              >
-                <Menu className="w-[18px] h-[18px]" strokeWidth={1.5} />
-              </button>
-            )}
-            <h2 className="text-base font-semibold tracking-tight font-display italic truncate">
-              {activeLabel}
-            </h2>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="hidden sm:flex px-2.5 py-1 rounded-full bg-accent-patina/8 border border-accent-patina/15 items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-accent-patina animate-pulse" />
-              <span className="text-[11px] font-semibold text-accent-patina tracking-wide whitespace-nowrap">All Systems Operational</span>
-            </div>
-            <div className="hidden md:block h-6 w-px bg-border-default" />
-            <div className="hidden md:block text-right">
-              <p className="text-[10px] text-text-muted">Total treasury</p>
-              <p className="text-sm font-bold text-text-primary tabular-nums">3,200.00 USDC</p>
-            </div>
-            <button className="w-8 h-8 rounded-lg flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors relative shrink-0">
-              <Bell className="w-[18px] h-[18px]" strokeWidth={1.5} />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-accent-coral ring-2 ring-bg-surface" />
-            </button>
-          </div>
-        </header>
+ {/* Right actions */}
+ <div className="flex items-center gap-2">
+ {/* Theme toggle */}
+ <button
+ onClick={cycleTheme}
+ className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors duration-200 hover:opacity-80"
+ style={{
+ color: 'var(--color-ash)',
+ border: '1px solid var(--color-rule)',
+ borderRadius: '2px',
+ }}
+ title={`Theme: ${themeLabel}`}
+ >
+ <ThemeIcon className="w-3.5 h-3.5" strokeWidth={1.5} />
+ <span className="hidden sm:inline">{themeLabel}</span>
+ </button>
 
-        {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-6">
-          <Outlet />
-        </div>
-      </main>
-    </div>
-  );
+ {/* Mobile menu toggle */}
+ <button
+ onClick={() => setMobileNavOpen(!mobileNavOpen)}
+ className="md:hidden flex items-center justify-center w-8 h-8 transition-colors"
+ style={{ color: 'var(--color-ash)' }}
+ aria-label="Toggle navigation"
+ >
+ <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+ {mobileNavOpen ? (
+ <>
+ <path d="M2 2l12 12M14 2L2 14" />
+ </>
+ ) : (
+ <>
+ <path d="M1 4h14M1 8h14M1 12h14" />
+ </>
+ )}
+ </svg>
+ </button>
+ </div>
+ </div>
+ </header>
+
+ {/* Mobile Navigation */}
+ {mobileNavOpen && (
+ <div
+ className="fixed inset-0 z-40 md:hidden"
+ style={{ top: 'var(--site-header-height)', backgroundColor: 'var(--color-bg)' }}
+ >
+ <nav className="flex flex-col p-6" style={{ gap: '4px' }}>
+ {navItems.map((item) => {
+ const Icon = item.icon;
+ const isActive = location.pathname === item.path;
+ return (
+ <NavLink
+ key={item.path}
+ to={item.path}
+ onClick={() => setMobileNavOpen(false)}
+ className="flex items-center gap-3 px-3 py-3 text-base font-medium transition-colors"
+ style={{
+ color: isActive ? 'var(--color-kinpaku)' : 'var(--color-ash)',
+ borderRadius: '2px',
+ }}
+ >
+ <Icon className="w-5 h-5" strokeWidth={1.5} />
+ {item.label}
+ </NavLink>
+ );
+ })}
+ </nav>
+ </div>
+ )}
+
+ {/* Main content */}
+ <main
+ className="mx-auto w-full"
+ style={{
+ maxWidth: 'var(--width-page)',
+ paddingTop: 'calc(var(--site-header-height) + 32px)',
+ paddingLeft: '24px',
+ paddingRight: '24px',
+ paddingBottom: '80px',
+ }}
+ >
+ <div style={{ maxWidth: 'var(--width-content)' }} className="mx-auto">
+ <Outlet />
+ </div>
+ </main>
+ </div>
+ );
 }
