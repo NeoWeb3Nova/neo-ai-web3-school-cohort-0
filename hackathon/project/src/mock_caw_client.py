@@ -87,6 +87,22 @@ class Transaction:
     alert_level: str = "none"  # none | warn | blocked | human_review
 
 
+@dataclass
+class A2ATransferRecord:
+    transfer_id: str
+    source_card_id: str
+    target_card_id: str
+    source_agent_id: str
+    target_agent_id: str
+    amount: float
+    currency: str
+    status: str  # APPROVED | DENIED
+    reason: str
+    timestamp: str
+    tx_hash: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 # ═══════════════════════════════════════════════════════════════
 # MockCAWClient
 # ═══════════════════════════════════════════════════════════════
@@ -103,6 +119,7 @@ class MockCAWClient:
         self._audit_log: List[Dict[str, Any]] = []
         self._used_api_keys: set = set()
         self._owner = "0xOPCBossNe0001"
+        self._a2a_transfers: List[A2ATransferRecord] = []
 
         # 预置一些 mock vendor 地址
         self._vendor_registry = {
@@ -340,6 +357,139 @@ class MockCAWClient:
         return self._payment_result(tx, card, "APPROVED", reason, alert_level, tx_hash)
 
     # ───────────────────────────────────────────
+    # A2A Transfer — Agent-to-Agent 资金调度
+    # ───────────────────────────────────────────
+
+    def submit_transfer(
+        self,
+        source_card_id: str,
+        target_card_id: str,
+        amount: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        模拟 Agent-to-Agent 资金调拨请求。
+
+        经过 Policy Engine 三阶段评估：
+            Stage 1: Permission Check（双方卡片状态）
+            Stage 2: Policy Rule Evaluation（余额、限额、冷却期）
+            Stage 3: Counter / Anomaly Check（频率、金额异常）
+
+        真实流程：Owner 或 Coordinator Agent 发起调拨，
+        CAW 在链上执行预算重分配（无需实际转账，调整 monthly_max）。
+        """
+        source = self._get_card_or_raise(source_card_id)
+        target = self._get_card_or_raise(target_card_id)
+        meta = metadata or {}
+        now = datetime.now(timezone.utc)
+        transfer_id = f"a2a-{uuid.uuid4().hex[:10]}"
+
+        # ── Stage 1: Permission Check ──
+        if source.status != "ACTIVE":
+            reason = f"PERMISSION_DENIED: source card status is {source.status}"
+            rec = self._record_a2a_transfer(
+                transfer_id, source, target, amount, "DENIED", reason, meta
+            )
+            return self._a2a_result(rec, "DENIED", reason)
+
+        if target.status != "ACTIVE":
+            reason = f"PERMISSION_DENIED: target card status is {target.status}"
+            rec = self._record_a2a_transfer(
+                transfer_id, source, target, amount, "DENIED", reason, meta
+            )
+            return self._a2a_result(rec, "DENIED", reason)
+
+        if amount <= 0:
+            reason = "PERMISSION_DENIED: amount must be positive"
+            rec = self._record_a2a_transfer(
+                transfer_id, source, target, amount, "DENIED", reason, meta
+            )
+            return self._a2a_result(rec, "DENIED", reason)
+
+        # ── Stage 2: Policy Rule Evaluation ──
+        checks = []
+
+        # 2a. 源卡可用余额检查（monthly_max - spent >= amount）
+        source_available = source.budget.monthly_max - source.budget.spent
+        balance_ok = source_available >= amount
+        checks.append("balance_ok" if balance_ok else "balance_exceeded")
+
+        # 2b. 单笔调拨限额（不超过源卡单笔交易限额）
+        per_tx_ok = amount <= source.budget.single_tx_limit
+        checks.append("per_tx_ok" if per_tx_ok else "per_tx_exceeded")
+
+        # 2c. 目标卡总预算上限检查（防止无限膨胀，mock 限制 5000）
+        target_new_total = target.budget.monthly_max + amount
+        target_cap_ok = target_new_total <= 5000.0
+        checks.append("target_cap_ok" if target_cap_ok else "target_cap_exceeded")
+
+        # 2d. 冷却期检查（同一对卡片 1 小时内只能调拨一次）
+        cooldown_ok = self._check_a2a_cooldown(source_card_id, target_card_id, hours=1, now=now)
+        checks.append("cooldown_ok" if cooldown_ok else "cooldown_violation")
+
+        policy_passed = balance_ok and per_tx_ok and target_cap_ok and cooldown_ok
+        if not policy_passed:
+            failed = [c for c in checks if not c.endswith("_ok")]
+            reason = f"POLICY_DENIED: {', '.join(failed)}"
+            rec = self._record_a2a_transfer(
+                transfer_id, source, target, amount, "DENIED", reason, meta
+            )
+            return self._a2a_result(rec, "DENIED", reason)
+
+        # ── Stage 3: Counter / Anomaly Check ──
+        alert_level = "none"
+        anomaly_reasons = []
+
+        # 3a. 金额偏离历史均值
+        hist = self._get_a2a_history(source_card_id)
+        if hist:
+            avg = sum(hist) / len(hist)
+            if avg > 0 and amount > avg * 5:
+                alert_level = "blocked"
+                anomaly_reasons.append(f"AMOUNT_ANOMALY: {amount} vs avg {avg:.2f}")
+
+        # 3b. 频率异常（同一源卡 1 小时内超过 2 次调拨）
+        recent_count = self._count_recent_a2a(source_card_id, hours=1)
+        if recent_count >= 2:
+            alert_level = max_alert(alert_level, "human_review")
+            anomaly_reasons.append(f"FREQ_ANOMALY: {recent_count} transfers in 1h")
+
+        # 3c. 凌晨 0-5 点异常
+        if 0 <= now.hour < 5:
+            alert_level = max_alert(alert_level, "human_review")
+            anomaly_reasons.append("OFF_HOURS: 00:00-05:00")
+
+        if alert_level == "blocked":
+            reason = f"ANOMALY_BLOCKED: {' | '.join(anomaly_reasons)}"
+            rec = self._record_a2a_transfer(
+                transfer_id, source, target, amount, "DENIED", reason, meta, alert_level
+            )
+            return self._a2a_result(rec, "DENIED", reason, alert_level)
+
+        # ── 全部通过：执行预算重分配 ──
+        source.budget.monthly_max -= amount
+        target.budget.monthly_max += amount
+
+        tx_hash = self._mock_tx_hash(source_card_id, target_card_id, amount, now)
+        reason = "A2A transfer approved"
+        if anomaly_reasons:
+            reason += f" | WARN: {' | '.join(anomaly_reasons)}"
+
+        rec = self._record_a2a_transfer(
+            transfer_id, source, target, amount, "APPROVED", reason, meta, alert_level, tx_hash
+        )
+
+        self._log_audit("A2A_TRANSFER_APPROVED", source_card_id, {
+            "transfer_id": transfer_id,
+            "target_card_id": target_card_id,
+            "amount": amount,
+            "source_remaining_budget": source.budget.monthly_max - source.budget.spent,
+            "target_new_budget": target.budget.monthly_max,
+        })
+
+        return self._a2a_result(rec, "APPROVED", reason, alert_level, tx_hash)
+
+    # ───────────────────────────────────────────
     # Audit Pipeline
     # ───────────────────────────────────────────
 
@@ -550,6 +700,89 @@ class MockCAWClient:
 
     def _tx_to_dict(self, tx: Transaction) -> Dict[str, Any]:
         return asdict(tx)
+
+    # ───────────────────────────────────────────
+    # A2A Transfer Helpers
+    # ───────────────────────────────────────────
+
+    def _check_a2a_cooldown(
+        self, source_card_id: str, target_card_id: str, hours: int, now: datetime
+    ) -> bool:
+        cutoff = now - timedelta(hours=hours)
+        for rec in reversed(self._a2a_transfers):
+            if rec.source_card_id == source_card_id and rec.target_card_id == target_card_id:
+                rec_time = datetime.fromisoformat(rec.timestamp.replace("Z", "+00:00"))
+                if rec_time > cutoff:
+                    return False
+                return True
+        return True
+
+    def _get_a2a_history(self, source_card_id: str) -> List[float]:
+        return [
+            rec.amount
+            for rec in self._a2a_transfers
+            if rec.source_card_id == source_card_id and rec.status == "APPROVED"
+        ]
+
+    def _count_recent_a2a(self, source_card_id: str, hours: int) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        return sum(
+            1 for rec in self._a2a_transfers
+            if rec.source_card_id == source_card_id
+            and datetime.fromisoformat(rec.timestamp.replace("Z", "+00:00")) > cutoff
+        )
+
+    def _record_a2a_transfer(
+        self,
+        transfer_id: str,
+        source: CardPact,
+        target: CardPact,
+        amount: float,
+        status: str,
+        reason: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        alert_level: str = "none",
+        tx_hash: str = "",
+    ) -> A2ATransferRecord:
+        rec = A2ATransferRecord(
+            transfer_id=transfer_id,
+            source_card_id=source.card_id,
+            target_card_id=target.card_id,
+            source_agent_id=source.agent_id,
+            target_agent_id=target.agent_id,
+            amount=amount,
+            currency=source.budget.currency,
+            status=status,
+            reason=reason,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            tx_hash=tx_hash,
+            metadata=metadata or {},
+        )
+        self._a2a_transfers.append(rec)
+        return rec
+
+    def _a2a_result(
+        self,
+        rec: A2ATransferRecord,
+        status: str,
+        reason: str,
+        alert_level: str = "none",
+        tx_hash: str = "",
+    ) -> Dict[str, Any]:
+        return {
+            "status": status,
+            "reason": reason,
+            "transfer_id": rec.transfer_id,
+            "source_card_id": rec.source_card_id,
+            "target_card_id": rec.target_card_id,
+            "source_agent_id": rec.source_agent_id,
+            "target_agent_id": rec.target_agent_id,
+            "amount": rec.amount,
+            "currency": rec.currency,
+            "tx_hash": tx_hash,
+            "alert_level": alert_level,
+            "timestamp": rec.timestamp,
+        }
 
 
 def max_alert(a: str, b: str) -> str:

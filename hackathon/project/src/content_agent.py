@@ -32,7 +32,7 @@ class ContentAgent:
         self.api_key: str = ""
         self.purchases: list = []
 
-    def onboard(self, monthly_budget: float = 200.0, single_tx_limit: float = 50.0):
+    def onboard(self, monthly_budget: float = 200.0, single_tx_limit: float = 50.0, cooldown_hours: int = 12):
         """
         OPC 老板为内容 Agent 开卡。
         对应提案中的 Demo 场景 1：为 Content Agent 创建 Card Pact
@@ -48,7 +48,7 @@ class ContentAgent:
                 {"name": "Midjourney", "address": "0xMidjourney...", "category": "api"},
                 {"name": "Unsplash", "address": "0xUnsplash...", "category": "api"},
             ],
-            cooldown_hours=12,
+            cooldown_hours=cooldown_hours,
         )
 
         result = self.caw.approve_card(self.card_id)
@@ -121,7 +121,7 @@ class AdAgent:
         self.api_key: str = ""
         self.purchases: list = []
 
-    def onboard(self, monthly_budget: float = 800.0, single_tx_limit: float = 200.0):
+    def onboard(self, monthly_budget: float = 800.0, single_tx_limit: float = 200.0, cooldown_hours: int = 6):
         print(f"[{self.name}] Onboarding...")
 
         self.card_id = self.caw.create_card_pact(
@@ -132,7 +132,7 @@ class AdAgent:
                 {"name": "Google Ads", "address": "0xGoogleAds...", "category": "ads"},
                 {"name": "Twitter Ads", "address": "0xTwitterAds...", "category": "ads"},
             ],
-            cooldown_hours=6,  # 广告投放更频繁
+            cooldown_hours=cooldown_hours,
         )
 
         result = self.caw.approve_card(self.card_id)

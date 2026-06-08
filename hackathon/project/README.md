@@ -1,9 +1,15 @@
 # OPC Agent Treasury — 一人企业的 AI 员工财务卡包
 
+Neo 雇了 5 个 AI Agent 7×24 运转，但每到半夜，Content Agent 要买 OpenAI API、Ad Agent 要充 Google Ads、Design Agent 要给外包付款——每一次都要把 Neo 从睡梦中拉醒。
+
+给私钥？Agent 被 Prompt Injection 攻击一次，全盘归零。不给？业务断更，客户流失。Brex/Ramp 需要美国实体和 SSN，Safe 多签需要人类合伙人签字——Neo 什么都没有。
+
+这就是全球数百万 One-Person Company 老板的困境：**AI 员工已经入职，财务授权却还没有跟上。**
+
 > **Hackathon**: AI × Web3 School Cohort-0  
 > **Track**: Cobo × Agentic Economy × Cobo Agentic Wallet  
 > **Status**: MVP Ready ✅  
-> **Demo Video**: [Link TBD]  
+> **Demo Video**: [Link TBD]
 
 ---
 
@@ -148,6 +154,49 @@ python3 threat_simulator.py       # 异常拦截
 | **为什么一定需要 Agent？** | OPC 只有 1 个人，但有 5-10 个 Agent 7×24 运行。老板不可能每次 Agent 要买 API 时都手动转账。 |
 | **为什么一定是 Web3？** | OPC 的收入来自全球客户的 USDC，支出是全球 API 和外包 — 传统银行账户无法覆盖这种无许可、7×24 的微观跨境经济。 |
 | **为什么中心化系统做不到？** | Brex/Ramp 需要美国公司实体、SSN/EIN、人类员工 — OPC 什么都没有。CAW 允许"个人身份"运行企业级财务控制，是唯一可行路径。 |
+
+---
+
+## 为什么是我们 (Why Us)
+
+我们不是把支付实现包装成 AI 概念——我们深入 Agent 经济的基础设施层，从协议诞生第一天就开始跟踪，并用真实代码验证了全链路。
+
+### 1. 对 Agent 经济的深度理解
+
+- 跟踪 **x402 协议**从诞生到发布（Coinbase 提出的 Agent 原生支付标准），理解 Agent 需要成为互联网的"一等支付公民"
+- 识别出核心断层：x402 解决的是"Agent 如何付费给服务方"，但 OPC 老板的真正痛点是"如何给 Agent 发预算而不给私钥"——这正是 CAW Pact 的切入点
+
+### 2. 对 CAW 钱包与 Pact 机制的深度研究
+
+- 完成 **Cobo Agentic Wallet 深度调研报告**（`docs/cobo-caw-research/report.md`），覆盖 MPC-TSS 架构、Agent-Owner 配对模型、Pact 生命周期四层接入架构
+- 对比 5 家竞品（Coinbase、Crossmint、Privy、Turnkey、Dynamic），明确 CAW 在"策略强制上链"和"单点撤销"上的唯一性
+- 基于真实 SDK（`cobo-agentic-wallet==0.1.40`）封装 `RealCAWClient`，完整跑通 Wallet 创建 → Pact 提交 → 策略绑定 → 链上转账
+
+### 3. 8 种攻击场景的完整威胁模型
+
+构建了行业级的 Agent 支付威胁模型（`docs/03-attack-matrix.md`），覆盖：
+
+| ID | 攻击类型 | 防御机制 |
+|---|---|---|
+| A1 | 重放攻击（Replay） | nonce 唯一性 + 时间窗口校验 |
+| A2 | 中间人攻击（MITM） | 端到端签名 + 地址白名单 |
+| A3 | 预算耗尽（Budget Exhaustion） | 每日/单次上限 + 频率限制 |
+| A4 | 恶意服务方（Rogue Server） | 资源哈希校验 + 声誉评分 |
+| A5 | 权限提升（Privilege Escalation） | 能力列表（Capability List）校验 |
+| A6 | 时间窗口绕过（Time Bypass） | 区块时间戳/链上时间戳校验 |
+| A7 | 签名伪造（Signature Forgery） | ECDSA + 链上签名验证 |
+| A8 | 审计日志篡改（Log Tampering） | 链上不可变日志 + 本地 Merkle 树 |
+
+### 4. 真实 CAW SDK 测试网交互证据
+
+所有交互均为 Production API 真实调用，非 Mock：
+
+- **Wallet**: `ad7f3253-4a3b-48a0-9d09-9bb59d334390`（MPC，ETH + SOL 双地址）
+- **ETH 地址**: `0x0abd808e6df088b9b97179a091582618586d0bdc`
+- **成功转账 Tx**: `0x1a119f1b1bf5ffdb9f2dc4bea392d5d489807aa97925c1949199f7ea91c9dddd`（0.001 SETH）
+- **Pact 实例**: `13328473-3868-4f45-a35e-ae2a8a1e1ea4`（Content Agent spending card，策略：BASE_USDC，$50/tx，$500/month）
+
+完整验证报告：`demo/CAW-REAL-TEST-RESULT.md`
 
 ---
 
