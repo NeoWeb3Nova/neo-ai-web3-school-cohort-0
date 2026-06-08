@@ -174,6 +174,10 @@ class ThreatSimulator:
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    caw = MockCAWClient()
+    import sys
+    sys.path.insert(0, ".")
+    from caw_factory import get_caw_client
+
+    caw = get_caw_client()
     sim = ThreatSimulator(caw)
     sim.run_all()

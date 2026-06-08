@@ -13,7 +13,7 @@ import sys
 import argparse
 
 sys.path.insert(0, ".")
-from mock_caw_client import MockCAWClient
+from caw_factory import get_caw_client
 from content_agent import ContentAgent, AdAgent
 from audit_reporter import AuditReporter
 from threat_simulator import ThreatSimulator
@@ -25,9 +25,10 @@ def demo_normal():
     print("🟢 NORMAL FLOW: One Day in an OPC Boss's Life")
     print("=" * 60)
 
-    caw = MockCAWClient()
+    caw = get_caw_client()
     now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
     print(f"\n📅 {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"CAW mode: {caw.__class__.__name__}")
     print("Neo (OPC owner) is hiring Content Agent and Ad Agent...\n")
 
     # ── 开卡 ──
@@ -75,7 +76,7 @@ def demo_attack():
     print("=" * 60)
     print("\nSimulating real-world attacks against OPC Agent Treasury...")
 
-    caw = MockCAWClient()
+    caw = get_caw_client()
     sim = ThreatSimulator(caw)
     sim.run_all()
 

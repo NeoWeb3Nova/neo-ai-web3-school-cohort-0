@@ -187,7 +187,12 @@ if __name__ == "__main__":
     print("OPC Agent Treasury — Agent Runtime Demo")
     print("=" * 60)
 
-    caw = MockCAWClient()
+    import sys
+    sys.path.insert(0, ".")
+    from caw_factory import get_caw_client
+
+    caw = get_caw_client()
+    print(f"[Mode] Using {type(caw).__name__}")
 
     # ── Agent 1: Content Agent ──
     content = ContentAgent("Content Agent", caw)

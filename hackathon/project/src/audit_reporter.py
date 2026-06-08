@@ -127,10 +127,12 @@ if __name__ == "__main__":
     print("Audit Reporter Demo")
     print("=" * 50)
 
-    # 复用 content_agent 的运行时数据
+    import sys
+    sys.path.insert(0, ".")
+    from caw_factory import get_caw_client
     from content_agent import ContentAgent, AdAgent
 
-    caw = MockCAWClient()
+    caw = get_caw_client()
 
     content = ContentAgent("Content Agent", caw)
     content.onboard()

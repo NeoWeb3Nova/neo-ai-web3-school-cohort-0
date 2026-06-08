@@ -20,7 +20,7 @@ sys.path.insert(0, ".")
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone
-from mock_caw_client import MockCAWClient, CardPact, Transaction
+from caw_factory import get_caw_client
 from content_agent import ContentAgent, AdAgent
 from audit_reporter import AuditReporter
 from threat_simulator import ThreatSimulator
@@ -85,7 +85,7 @@ st.markdown("""
 # ═══════════════════════════════════════════════════════════════
 def init_state():
     if "caw" not in st.session_state:
-        st.session_state.caw = MockCAWClient()
+        st.session_state.caw = get_caw_client()
     if "initialized" not in st.session_state:
         st.session_state.initialized = False
     if "content_agent" not in st.session_state:
@@ -104,7 +104,7 @@ def log(msg: str, level: str = "info"):
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     st.session_state.log_messages.append({"time": ts, "msg": msg, "level": level})
 
-def get_caw() -> MockCAWClient:
+def get_caw():
     return st.session_state.caw
 
 # ═══════════════════════════════════════════════════════════════
@@ -133,7 +133,7 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Reset System", type="secondary", use_container_width=True):
-        st.session_state.caw = MockCAWClient()
+        st.session_state.caw = get_caw_client()
         st.session_state.initialized = False
         st.session_state.content_agent = None
         st.session_state.ad_agent = None

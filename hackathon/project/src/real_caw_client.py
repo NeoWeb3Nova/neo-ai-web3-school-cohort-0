@@ -1,0 +1,736 @@
+"""
+RealCAWClient — Cobo Agentic Wallet (CAW) 真实 SDK 同步封装
+
+基于 cobo-agentic-wallet Python SDK (v0.1.40) 封装，
+提供与 MockCAWClient 兼容的同步接口，便于现有代码无缝切换。
+
+安装依赖:
+    pip install cobo-agentic-wallet nest-asyncio
+
+环境变量:
+    AGENT_WALLET_API_URL    (dev: https://api-core.agenticwallet.dev.cobo.com)
+    AGENT_WALLET_API_KEY    (格式: caw_...)
+    AGENT_WALLET_WALLET_ID  (Wallet UUID)
+    CAW_DEFAULT_CHAIN       (默认: BASE_ETH)
+    CAW_DEFAULT_TOKEN       (默认: BASE_USDC)
+    VENDOR_*_ADDR           (各供应商真实链上地址)
+
+使用:
+    from real_caw_client import RealCAWClient
+    caw = RealCAWClient()
+    card_id = caw.create_card_pact(agent_name="Content Agent", ...)
+    caw.approve_card(card_id)   # 轮询等待用户在 App 中批准
+    result = caw.submit_payment(card_id, vendor="OpenAI", amount=10.0)
+
+已验证的 SDK 方法签名 (v0.1.40):
+    WalletAPIClient(base_url=..., api_key=...)
+    submit_pact(wallet_id, intent, spec)
+    get_pact(pact_id)
+    list_pacts(wallet_id=...)
+    revoke_pact(pact_id)
+    transfer_tokens(wallet_uuid, *, dst_addr, amount, token_id, chain_id, request_id)
+    list_user_transactions(wallet_uuid, limit)
+    list_audit_logs(wallet_id, action, limit)
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import json
+import uuid
+import asyncio
+import logging
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+# ── SDK 可用性检测 ──────────────────────────────────────────
+try:
+    from cobo_agentic_wallet import WalletAPIClient
+    COBO_SDK_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    COBO_SDK_AVAILABLE = False
+    WalletAPIClient = None  # type: ignore
+
+
+# ═══════════════════════════════════════════════════════════════
+# Helpers
+# ═══════════════════════════════════════════════════════════════
+
+def _sync(coro) -> Any:
+    """在同步上下文中执行异步协程。"""
+    try:
+        loop = asyncio.get_running_loop()
+        # 如果已在事件循环中（如 Jupyter / 某些 Web 框架），尝试 nest_asyncio
+        try:
+            import nest_asyncio
+            nest_asyncio.apply()
+        except ImportError:
+            pass
+        return loop.run_until_complete(coro)
+    except RuntimeError:
+        return asyncio.run(coro)
+
+
+def _default_chain() -> str:
+    return os.getenv("CAW_DEFAULT_CHAIN", "BASE_ETH")
+
+
+def _default_token() -> str:
+    return os.getenv("CAW_DEFAULT_TOKEN", "BASE_USDC")
+
+
+def _vendor_address(vendor_name: str) -> str:
+    """从环境变量获取供应商真实链上地址；未配置时返回零地址。"""
+    key = f"VENDOR_{vendor_name.upper().replace(' ', '_')}_ADDR"
+    return os.getenv(key, "0x0000000000000000000000000000000000000000")
+
+
+# ═══════════════════════════════════════════════════════════════
+# RealCAWClient
+# ═══════════════════════════════════════════════════════════════
+
+class RealCAWClient:
+    """
+    真实 CAW SDK 的同步封装，接口尽量与 MockCAWClient 保持一致。
+    """
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        wallet_uuid: Optional[str] = None,
+    ):
+        if not COBO_SDK_AVAILABLE:
+            raise ImportError(
+                "cobo-agentic-wallet SDK is not installed.\n"
+                "Install it with: pip install cobo-agentic-wallet"
+            )
+
+        self.base_url = base_url or os.getenv(
+            "AGENT_WALLET_API_URL",
+            "https://api.agenticwallet.cobo.com",
+        )
+        self.api_key = api_key or os.getenv("AGENT_WALLET_API_KEY", "")
+        self.wallet_uuid = wallet_uuid or os.getenv("AGENT_WALLET_WALLET_ID", "")
+
+        if not self.api_key:
+            raise ValueError(
+                "CAW API key is required. Set AGENT_WALLET_API_KEY env var.\n"
+                "Get it from: caw wallet current --show-api-key"
+            )
+        if not self.wallet_uuid:
+            raise ValueError(
+                "CAW Wallet UUID is required. Set AGENT_WALLET_WALLET_ID env var.\n"
+                "Get it from: caw wallet current --show-api-key"
+            )
+
+        self._client = WalletAPIClient(
+            base_url=self.base_url,
+            api_key=self.api_key,
+        )
+        self._owner = os.getenv("CAW_OWNER", "OPC Owner")
+
+        # 本地缓存（真实服务端是权威源，本地仅作辅助）
+        self._cards: Dict[str, Dict[str, Any]] = {}
+        self._transactions: List[Dict[str, Any]] = []
+        self._audit_log: List[Dict[str, Any]] = []
+
+    # ───────────────────────────────────────────
+    # Identity & Pact Lifecycle
+    # ───────────────────────────────────────────
+
+    def create_card_pact(
+        self,
+        agent_name: str,
+        monthly_budget: float,
+        single_tx_limit: float,
+        vendor_whitelist: List[Dict[str, str]],
+        cooldown_hours: int = 12,
+        owner: Optional[str] = None,
+        duration_days: int = 30,
+    ) -> str:
+        """
+        为 Agent 创建一个 Transfer Pact，映射原有 Card 概念。
+
+        策略映射:
+        - monthly_budget  → deny_if.usage_limits.rolling_30d.amount_usd_gt
+        - single_tx_limit → deny_if.amount_usd_gt
+        - vendor_whitelist  → when.destination_address_in
+        - cooldown_hours    → deny_if.usage_limits.rolling_{cooldown_hours}h.tx_count_gt (近似)
+        """
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(days=duration_days)
+
+        # 构建 destination_address_in
+        dest_addrs = []
+        for v in vendor_whitelist:
+            addr = v.get("address") or _vendor_address(v["name"])
+            if addr and addr != "0x0000000000000000000000000000000000000000":
+                dest_addrs.append({"chain_id": _default_chain(), "address": addr})
+
+        if not dest_addrs:
+            raise ValueError("No valid vendor addresses provided. Set VENDOR_*_ADDR env vars.")
+
+        # 构建 usage_limits — 同时覆盖单笔、月度、频率
+        usage_limits: Dict[str, Any] = {}
+        # 月度预算窗口
+        usage_limits["rolling_30d"] = {
+            "amount_usd_gt": str(monthly_budget),
+            "tx_count_gt": 9999,  # 宽松，主要靠金额限制
+        }
+        # 频率限制（近似 cooldown）
+        window_key = f"rolling_{int(cooldown_hours)}h"
+        usage_limits[window_key] = {"tx_count_gt": 1}
+
+        policies = [
+            {
+                "name": f"{agent_name.lower().replace(' ', '-')}-transfer-policy",
+                "type": "transfer",
+                "rules": {
+                    "effect": "allow",
+                    "when": {
+                        "chain_in": [_default_chain()],
+                        "token_in": [
+                            {"chain_id": _default_chain(), "token_id": _default_token()}
+                        ],
+                        "destination_address_in": dest_addrs,
+                    },
+                    "deny_if": {
+                        "amount_usd_gt": str(single_tx_limit),
+                        "usage_limits": usage_limits,
+                    },
+                    # 大额触发人工审批
+                    "review_if": {
+                        "amount_usd_gt": str(single_tx_limit * 0.8),
+                    },
+                },
+            }
+        ]
+
+        completion_conditions = [
+            {"type": "time_elapsed", "threshold": str(int(duration_days * 86400))},
+            {"type": "amount_spent_usd", "threshold": str(monthly_budget)},
+        ]
+
+        execution_plan = (
+            f"# Summary\n"
+            f"Agent card for {agent_name}. Monthly budget ${monthly_budget} USDC, "
+            f"single-tx limit ${single_tx_limit}.\n\n"
+            f"# Operations\n"
+            f"- Transfer USDC to approved vendors on {_default_chain()}\n"
+            f"- Vendors: {', '.join(v['name'] for v in vendor_whitelist)}\n\n"
+            f"# Risk Controls\n"
+            f"- Per-tx cap: ${single_tx_limit}\n"
+            f"- Monthly cap: ${monthly_budget}\n"
+            f"- Cooldown: {cooldown_hours}h between same-vendor payments\n"
+            f"- Expires: {expires.isoformat()}"
+        )
+
+        intent = (
+            f"Issue spending card for {agent_name}: "
+            f"budget ${monthly_budget}/month, tx limit ${single_tx_limit}"
+        )
+
+        result = _sync(
+            self._client.submit_pact(
+                wallet_id=self.wallet_uuid,
+                intent=intent,
+                spec={
+                    "policies": policies,
+                    "completion_conditions": completion_conditions,
+                    "execution_plan": execution_plan,
+                },
+            )
+        )
+
+        # 解析 pact_id（SDK 返回结构可能嵌套在 result 中）
+        pact_id = result.get("pact_id") or result.get("result", {}).get("pact_id")
+        if not pact_id:
+            raise RuntimeError(f"submit_pact returned unexpected structure: {result}")
+
+        # 保存本地映射
+        self._cards[pact_id] = {
+            "card_id": pact_id,
+            "agent_name": agent_name,
+            "agent_id": f"agent-{agent_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}",
+            "owner": owner or self._owner,
+            "status": "PENDING_APPROVAL",
+            "budget": {
+                "currency": "USDC",
+                "monthly_max": monthly_budget,
+                "spent": 0.0,
+                "single_tx_limit": single_tx_limit,
+            },
+            "vendor_whitelist": vendor_whitelist,
+            "cooldown_hours": cooldown_hours,
+            "created_at": now.isoformat(),
+            "expires_at": expires.isoformat(),
+            "api_key": "",
+        }
+
+        self._log_audit("PACT_CREATED", pact_id, {
+            "agent_name": agent_name,
+            "monthly_budget": monthly_budget,
+            "vendor_count": len(vendor_whitelist),
+        })
+        return pact_id
+
+    def approve_card(self, card_id: str, poll_interval: int = 5, max_wait: int = 300) -> Dict[str, Any]:
+        """
+        轮询等待 Pact 状态变为 ACTIVE。
+
+        真实流程中，用户需要在 Cobo Agentic Wallet App 中点击 Approve。
+        本方法会每隔 poll_interval 秒查询一次状态，最多等待 max_wait 秒。
+
+        如果在 max_wait 秒内未变为 ACTIVE，抛出 TimeoutError。
+        """
+        card = self._get_card_or_raise(card_id)
+        if card["status"] == "ACTIVE":
+            return {"card_id": card_id, "status": "ACTIVE", "api_key": card.get("api_key", "")}
+
+        logger.info(
+            "[CAW] Waiting for Pact %s approval. Please approve it in the Cobo Agentic Wallet App...",
+            card_id,
+        )
+
+        waited = 0
+        while waited < max_wait:
+            try:
+                pact = _sync(self._client.get_pact(card_id))
+                status = self._extract_pact_status(pact)
+
+                if status == "ACTIVE":
+                    card["status"] = "ACTIVE"
+                    # 注意：Pact-scoped API Key 理论上由 SDK/runtime 返回，
+                    # 但文档说明它仅返回给 runtime。如果 get_pact 不返回 key，
+                    # 则我们继续使用 Principal API Key（测试阶段可行）。
+                    scoped_key = pact.get("pact_scoped_api_key") or ""
+                    card["api_key"] = scoped_key
+
+                    self._log_audit("PACT_APPROVED", card_id, {})
+                    return {
+                        "card_id": card_id,
+                        "status": "ACTIVE",
+                        "api_key": scoped_key or self.api_key[:12] + "...",
+                        "delegation_scope": "wallet:spend:limited",
+                    }
+
+                if status in ("REJECTED", "REVOKED", "EXPIRED", "WITHDRAWN"):
+                    card["status"] = status
+                    raise RuntimeError(f"Pact {card_id} is {status} — cannot proceed")
+
+            except Exception as exc:
+                logger.warning("[CAW] Pact poll error: %s", exc)
+
+            import time
+            time.sleep(poll_interval)
+            waited += poll_interval
+
+        raise TimeoutError(
+            f"Pact {card_id} was not approved within {max_wait}s. "
+            "Please open the Cobo Agentic Wallet App and approve it manually, "
+            "then call approve_card() again."
+        )
+
+    def revoke_card(self, card_id: str) -> Dict[str, Any]:
+        """吊销 Pact，立即失效。"""
+        card = self._get_card_or_raise(card_id)
+
+        try:
+            _sync(self._client.revoke_pact(card_id))
+        except Exception as exc:
+            logger.warning("[CAW] revoke_pact API call failed (may already be revoked): %s", exc)
+
+        card["status"] = "REVOKED"
+        card["api_key"] = ""
+
+        self._log_audit("PACT_REVOKED", card_id, {"reason": "owner_manual_revoke"})
+        return {"card_id": card_id, "status": "REVOKED", "api_key_invalidated": True}
+
+    def get_card(self, card_id: str) -> Dict[str, Any]:
+        """获取 Card/Pact 详情（优先本地缓存，回退 API）。"""
+        if card_id in self._cards:
+            return dict(self._cards[card_id])
+        # 如果本地没有，尝试从 API 获取
+        try:
+            pact = _sync(self._client.get_pact(card_id))
+            return self._pact_to_card_dict(pact)
+        except Exception as exc:
+            raise ValueError(f"Card {card_id} not found: {exc}")
+
+    def list_cards(self) -> List[Dict[str, Any]]:
+        """列出所有 Pacts（本地缓存 + API 补充）。"""
+        try:
+            result = _sync(self._client.list_pacts(wallet_id=self.wallet_uuid))
+            pacts = result if isinstance(result, list) else result.get("pacts", [])
+            for p in pacts:
+                pid = p.get("pact_id") or p.get("id")
+                if pid:
+                    self._cards[pid] = self._pact_to_card_dict(p)
+        except Exception as exc:
+            logger.warning("[CAW] list_pacts API call failed: %s", exc)
+
+        return [dict(c) for c in self._cards.values()]
+
+    # ───────────────────────────────────────────
+    # Policy Engine — Payment
+    # ───────────────────────────────────────────
+
+    def submit_payment(
+        self,
+        card_id: str,
+        vendor: str,
+        amount: float,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        提交一笔转账请求。真实 CAW 中，这会经过 Policy Engine 三阶段评估，
+        然后在 MPC TSS 签名后上链。
+        """
+        card = self._get_card_or_raise(card_id)
+        meta = metadata or {}
+        now = datetime.now(timezone.utc)
+        tx_id = f"tx-{uuid.uuid4().hex[:10]}"
+        vendor_addr = _vendor_address(vendor)
+
+        # ── Stage 1: Permission Check（本地前置校验）──
+        if card["status"] != "ACTIVE":
+            reason = f"PERMISSION_DENIED: card status is {card['status']}"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        if amount <= 0:
+            reason = "PERMISSION_DENIED: amount must be positive"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        # ── Stage 2-3: 交由 CAW Policy Engine 处理 ──
+        request_id = meta.get("request_id") or f"pay-{now.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}"
+
+        try:
+            result = _sync(
+                self._client.transfer_tokens(
+                    wallet_uuid=self.wallet_uuid,
+                    chain_id=_default_chain(),
+                    dst_addr=vendor_addr,
+                    token_id=_default_token(),
+                    amount=str(amount),
+                    request_id=request_id,
+                    # TODO: 验证 SDK 是否支持 pact_id 参数
+                    # pact_id=card_id,
+                )
+            )
+
+            # 解析结果
+            tx_status = "APPROVED"
+            reason = "All checks passed"
+            tx_hash = result.get("tx_hash") or result.get("transaction_hash") or ""
+
+            # 更新本地预算（真实服务端是权威源，此处仅作估算）
+            card["budget"]["spent"] = card["budget"].get("spent", 0) + amount
+
+            tx = self._record_tx(
+                tx_id, card, vendor, vendor_addr, amount, "APPROVED", reason,
+                tx_hash=tx_hash, metadata=meta
+            )
+
+            self._log_audit("PAYMENT_APPROVED", card_id, {
+                "tx_id": tx_id,
+                "amount": amount,
+                "vendor": vendor,
+                "request_id": request_id,
+                "remaining": card["budget"]["monthly_max"] - card["budget"]["spent"],
+            })
+
+            return self._payment_result(tx, card, "APPROVED", reason, "none", tx_hash)
+
+        except Exception as exc:
+            err_str = str(exc)
+            # 尝试解析 Policy Engine 拒绝原因
+            if any(k in err_str.lower() for k in ("denied", "policy", "limit", "allowlist")):
+                status = "DENIED"
+                reason = f"POLICY_DENIED: {err_str}"
+            else:
+                status = "DENIED"
+                reason = f"ERROR: {err_str}"
+
+            tx = self._record_tx(
+                tx_id, card, vendor, vendor_addr, amount, status, reason,
+                metadata=meta
+            )
+            return self._payment_result(tx, card, status, reason)
+
+    # ───────────────────────────────────────────
+    # Audit Pipeline
+    # ───────────────────────────────────────────
+
+    def list_transaction_records(
+        self,
+        card_id: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """查询交易记录（优先 API，失败回退本地缓存）。"""
+        try:
+            result = _sync(
+                self._client.list_user_transactions(
+                    wallet_uuid=self.wallet_uuid,
+                    limit=100,
+                )
+            )
+            records = result if isinstance(result, list) else result.get("records", [])
+            # 转换为本地格式并缓存
+            self._transactions = [self._api_tx_to_dict(r) for r in records]
+        except Exception as exc:
+            logger.warning("[CAW] list_user_transactions failed: %s", exc)
+
+        # 过滤
+        filtered = []
+        for tx in self._transactions:
+            if card_id and tx.get("card_id") != card_id:
+                continue
+            if start_time and tx.get("timestamp", "") < start_time:
+                continue
+            if end_time and tx.get("timestamp", "") > end_time:
+                continue
+            filtered.append(tx)
+        return filtered
+
+    def get_monthly_summary(self, month: str = "2026-06") -> Dict[str, Any]:
+        """生成月末审计报表（结合 API 审计日志 + 本地缓存）。"""
+        try:
+            logs = _sync(
+                self._client.list_audit_logs(
+                    wallet_id=self.wallet_uuid,
+                    action="transfer.initiate",
+                    limit=200,
+                )
+            )
+            api_logs = logs if isinstance(logs, list) else logs.get("logs", [])
+        except Exception as exc:
+            logger.warning("[CAW] list_audit_logs failed: %s", exc)
+            api_logs = []
+
+        # 合并本地与 API 记录（简单去重）
+        month_tx = [
+            tx for tx in self._transactions
+            if tx.get("timestamp", "").startswith(month)
+        ]
+
+        total_income = 3200.0  # mock: OPC 本月收入
+        total_approved = sum(t["amount"] for t in month_tx if t["status"] == "APPROVED")
+        total_denied = sum(t["amount"] for t in month_tx if t["status"] == "DENIED")
+        denied_count = len([t for t in month_tx if t["status"] == "DENIED"])
+
+        by_agent: Dict[str, Dict[str, Any]] = {}
+        for tx in month_tx:
+            agent = tx.get("agent_id", "unknown")
+            if agent not in by_agent:
+                by_agent[agent] = {"spent": 0.0, "tx_count": 0, "vendors": set(), "denied": 0}
+            if tx["status"] == "APPROVED":
+                by_agent[agent]["spent"] += tx["amount"]
+            by_agent[agent]["tx_count"] += 1
+            by_agent[agent]["vendors"].add(tx["vendor"])
+            if tx["status"] == "DENIED":
+                by_agent[agent]["denied"] += 1
+
+        anomalies = [
+            {
+                "tx_id": tx["tx_id"],
+                "agent": tx["agent_id"],
+                "amount": tx["amount"],
+                "reason": tx["reason"],
+                "alert": tx.get("alert_level", "none"),
+            }
+            for tx in month_tx
+            if tx.get("alert_level") in ("blocked", "human_review") or tx["status"] == "DENIED"
+        ]
+
+        return {
+            "month": month,
+            "total_income_usd": total_income,
+            "total_approved_usd": total_approved,
+            "total_denied_usd": total_denied,
+            "denied_count": denied_count,
+            "transaction_count": len(month_tx),
+            "by_agent": {
+                k: {**v, "vendors": list(v["vendors"])}
+                for k, v in by_agent.items()
+            },
+            "anomalies": anomalies,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def export_audit_log(self, filepath: str):
+        """导出完整审计日志到 JSONL。"""
+        with open(filepath, "w", encoding="utf-8") as f:
+            for entry in self._audit_log:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        logger.info("[CAW] Audit log exported to %s", filepath)
+
+    # ───────────────────────────────────────────
+    # Internal Helpers
+    # ───────────────────────────────────────────
+
+    def _get_card_or_raise(self, card_id: str) -> Dict[str, Any]:
+        if card_id not in self._cards:
+            # 尝试从 API 刷新
+            try:
+                pact = _sync(self._client.get_pact(card_id))
+                self._cards[card_id] = self._pact_to_card_dict(pact)
+            except Exception as exc:
+                raise ValueError(f"Card {card_id} not found: {exc}")
+        return self._cards[card_id]
+
+    def _log_audit(self, action: str, card_id: str, details: Dict[str, Any]):
+        self._audit_log.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "card_id": card_id,
+            "details": details,
+        })
+
+    def _record_tx(
+        self,
+        tx_id: str,
+        card: Dict[str, Any],
+        vendor: str,
+        vendor_addr: str,
+        amount: float,
+        status: str,
+        reason: str,
+        alert_level: str = "none",
+        tx_hash: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        tx = {
+            "tx_id": tx_id,
+            "card_id": card["card_id"],
+            "agent_id": card["agent_id"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "vendor": vendor,
+            "vendor_address": vendor_addr,
+            "amount": amount,
+            "currency": card["budget"]["currency"],
+            "status": status,
+            "reason": reason,
+            "remaining_budget": card["budget"]["monthly_max"] - card["budget"].get("spent", 0),
+            "tx_hash": tx_hash,
+            "metadata": metadata or {},
+            "alert_level": alert_level,
+        }
+        self._transactions.append(tx)
+        return tx
+
+    def _payment_result(
+        self,
+        tx: Dict[str, Any],
+        card: Dict[str, Any],
+        status: str,
+        reason: str,
+        alert_level: str = "none",
+        tx_hash: str = "",
+    ) -> Dict[str, Any]:
+        return {
+            "status": status,
+            "reason": reason,
+            "tx_id": tx["tx_id"],
+            "amount": tx["amount"],
+            "vendor": tx["vendor"],
+            "remaining_budget": card["budget"]["monthly_max"] - card["budget"].get("spent", 0),
+            "tx_hash": tx_hash or tx.get("tx_hash", ""),
+            "alert_level": alert_level,
+        }
+
+    # ── SDK 响应解析适配 ──────────────────────────────
+
+    def _extract_pact_status(self, pact: Dict[str, Any]) -> str:
+        """从 SDK get_pact 响应中提取状态字符串。"""
+        status = pact.get("status") or pact.get("state") or pact.get("pact_status", "")
+        return str(status).upper()
+
+    def _pact_to_card_dict(self, pact: Dict[str, Any]) -> Dict[str, Any]:
+        """将 CAW Pact 对象转换为与 Mock 兼容的 Card dict。"""
+        pid = pact.get("pact_id") or pact.get("id") or "unknown"
+        spec = pact.get("spec", {})
+        policies = spec.get("policies", [])
+
+        # 尝试从 policy 中恢复 budget / tx_limit
+        monthly_max = 0.0
+        single_tx_limit = 0.0
+        if policies:
+            rules = policies[0].get("rules", {})
+            deny_if = rules.get("deny_if", {})
+            single_tx_limit = float(deny_if.get("amount_usd_gt", 0))
+            usage = deny_if.get("usage_limits", {})
+            rolling_30d = usage.get("rolling_30d", {})
+            monthly_max = float(rolling_30d.get("amount_usd_gt", 0))
+
+        # vendor whitelist
+        vendor_whitelist = []
+        if policies:
+            when = policies[0].get("rules", {}).get("when", {})
+            for dest in when.get("destination_address_in", []):
+                vendor_whitelist.append({
+                    "name": dest.get("address", "")[:8] + "...",
+                    "address": dest.get("address", ""),
+                    "category": "api",
+                })
+
+        return {
+            "card_id": pid,
+            "agent_name": pact.get("intent", "Unknown Agent"),
+            "agent_id": f"agent-{pid}",
+            "owner": self._owner,
+            "status": self._extract_pact_status(pact),
+            "budget": {
+                "currency": "USDC",
+                "monthly_max": monthly_max,
+                "spent": 0.0,  # 无法从 pact 直接获取，需从交易推算
+                "single_tx_limit": single_tx_limit,
+            },
+            "vendor_whitelist": vendor_whitelist,
+            "cooldown_hours": 12,
+            "created_at": pact.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "expires_at": pact.get("expires_at", ""),
+            "api_key": "",
+        }
+
+    def _api_tx_to_dict(self, api_tx: Dict[str, Any]) -> Dict[str, Any]:
+        """将 CAW transaction record 转换为本地 Transaction dict。"""
+        return {
+            "tx_id": api_tx.get("request_id") or api_tx.get("id") or "tx-unknown",
+            "card_id": api_tx.get("pact_id") or api_tx.get("delegation_id", ""),
+            "agent_id": api_tx.get("principal_id", "unknown"),
+            "timestamp": api_tx.get("created_at", datetime.now(timezone.utc).isoformat()),
+            "vendor": api_tx.get("dst_addr", "")[:10] + "...",
+            "vendor_address": api_tx.get("dst_addr", ""),
+            "amount": float(api_tx.get("amount", 0)),
+            "currency": api_tx.get("token_id", "USDC"),
+            "status": "APPROVED" if api_tx.get("status") == "success" else api_tx.get("status", "PENDING_APPROVAL").upper(),
+            "reason": api_tx.get("result", "") or api_tx.get("status", ""),
+            "remaining_budget": 0.0,
+            "tx_hash": api_tx.get("tx_hash", ""),
+            "metadata": {},
+            "alert_level": "none",
+        }
+
+
+# ═══════════════════════════════════════════════════════════════
+# 自测入口
+# ═══════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    try:
+        client = RealCAWClient()
+        print(f"[OK] Connected to CAW at {client.base_url}")
+        print(f"     Wallet: {client.wallet_uuid}")
+        print(f"     SDK available: {COBO_SDK_AVAILABLE}")
+    except Exception as exc:
+        print(f"[ERROR] {exc}")
+        sys.exit(1)

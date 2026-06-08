@@ -174,7 +174,7 @@ class MockCAWClient:
         })
         return card_id
 
-    def approve_card(self, card_id: str) -> Dict[str, Any]:
+    def approve_card(self, card_id: str, **kwargs) -> Dict[str, Any]:
         """
         模拟：用户在 CAW App 中点击 Approve
         真实流程：PactState PENDING_APPROVAL → ACTIVE
@@ -507,16 +507,17 @@ class MockCAWClient:
     ) -> Dict[str, Any]:
         return {
             "status": status,
+            "reason": reason,
             "tx_id": tx.tx_id,
+            "amount": tx.amount,
+            "vendor": tx.vendor,
+            "remaining_budget": card.budget.monthly_max - card.budget.spent,
+            "tx_hash": tx_hash,
+            "alert_level": alert_level,
+            "timestamp": tx.timestamp,
             "card_id": card.card_id,
             "agent_id": card.agent_id,
-            "amount": tx.amount,
             "currency": card.budget.currency,
-            "remaining_budget": card.budget.monthly_max - card.budget.spent,
-            "reason": reason,
-            "alert_level": alert_level,
-            "tx_hash": tx_hash,
-            "timestamp": tx.timestamp,
         }
 
     def _mock_tx_hash(self, card_id: str, vendor: str, amount: float, now: datetime) -> str:
