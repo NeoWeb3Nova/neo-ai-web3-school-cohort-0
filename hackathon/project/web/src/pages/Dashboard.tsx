@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CreditCard,
   TrendingUp,
@@ -41,6 +42,7 @@ function formatUSDC(value: number): string {
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation();
   const [liveCards, setLiveCards] = useState<typeof INITIAL_CARDS | null>(null);
   const [liveTxs, setLiveTxs] = useState<typeof INITIAL_TRANSACTIONS | null>(null);
   const [liveSummary, setLiveSummary] = useState<typeof MONTHLY_SUMMARY | null>(null);
@@ -59,10 +61,10 @@ export default function Dashboard() {
       .catch((err) => {
         if (cancelled) return;
         console.warn('[Dashboard] Backend unreachable, using mock data:', err);
-        setError('Backend offline — showing demo data');
+        setError(t('common.offline'));
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [t]);
 
   const cards = liveCards ?? INITIAL_CARDS;
   const transactions = liveTxs ?? INITIAL_TRANSACTIONS;
@@ -147,7 +149,7 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Treasury balance
+              {t('dashboard.treasuryBalance')}
             </span>
             <div className="w-8 h-8 rounded-im bg-accent-gold/10 flex items-center justify-center">
               <CreditCard className="w-4 h-4 text-accent-gold" strokeWidth={1.5} />
@@ -155,12 +157,12 @@ export default function Dashboard() {
           </div>
           <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {formatCurrency(treasuryBalance)}{' '}
-            <span className="text-sm font-medium text-text-muted">USDC</span>
+            <span className="text-sm font-medium text-text-muted">{t('common.usdc')}</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <ArrowUpRight className="w-3.5 h-3.5 text-accent-gold" strokeWidth={2} />
             <span className="text-xs font-medium text-accent-gold">
-              {utilizationRate}% utilized
+              {utilizationRate}{t('dashboard.utilized')}
             </span>
           </div>
         </div>
@@ -169,7 +171,7 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Active cards
+              {t('dashboard.activeCards')}
             </span>
             <div className="w-8 h-8 rounded-im bg-accent-slate/10 flex items-center justify-center">
               <Bot className="w-4 h-4 text-accent-slate" strokeWidth={1.5} />
@@ -185,10 +187,10 @@ export default function Dashboard() {
             {stats.pendingCards > 0 ? (
               <button className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-accent-amber/10 border border-accent-amber/20 text-accent-amber text-xs font-medium hover:bg-accent-amber/20 transition-colors cursor-pointer">
                 <Clock className="w-3 h-3" strokeWidth={2} />
-                {stats.pendingCards} pending approval
+                {stats.pendingCards} {t('dashboard.pendingApproval')}
               </button>
             ) : (
-              <span className="text-xs text-text-muted">All cards operational</span>
+              <span className="text-xs text-text-muted">{t('dashboard.allCardsOperational')}</span>
             )}
           </div>
         </div>
@@ -197,7 +199,7 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Approved volume
+              {t('dashboard.approvedVolume')}
             </span>
             <div className="w-8 h-8 rounded-im bg-accent-patina/10 flex items-center justify-center">
               <TrendingUp className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
@@ -205,12 +207,12 @@ export default function Dashboard() {
           </div>
           <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {formatCurrency(stats.totalApproved)}{' '}
-            <span className="text-sm font-medium text-text-muted">USDC</span>
+            <span className="text-sm font-medium text-text-muted">{t('common.usdc')}</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <ArrowUpRight className="w-3.5 h-3.5 text-accent-patina" strokeWidth={2} />
             <span className="text-xs font-medium text-accent-patina">
-              {stats.approvedCount} transactions
+              {stats.approvedCount} {t('dashboard.transactions')}
             </span>
           </div>
         </div>
@@ -219,7 +221,7 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
             <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Threats blocked
+              {t('dashboard.threatsBlocked')}
             </span>
             <div className="w-8 h-8 rounded-im bg-accent-coral/10 flex items-center justify-center">
               <ShieldCheck className="w-4 h-4 text-accent-coral" strokeWidth={1.5} />
@@ -227,12 +229,12 @@ export default function Dashboard() {
           </div>
           <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {stats.deniedCount}
-            <span className="text-sm font-medium text-text-muted ml-1.5">attacks</span>
+            <span className="text-sm font-medium text-text-muted ml-1.5">{t('dashboard.attacks')}</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <ArrowDownRight className="w-3.5 h-3.5 text-accent-patina" strokeWidth={2} />
             <span className="text-xs font-medium text-accent-patina">
-              {formatCurrency(stats.totalDenied)} USDC saved
+              {formatCurrency(stats.totalDenied)} {t('dashboard.saved')}
             </span>
           </div>
         </div>
@@ -244,8 +246,8 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 lg:col-span-2 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary font-display">Spending by Agent</h3>
-              <p className="text-xs text-text-muted mt-0.5">Approved transactions only</p>
+              <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.spendingByAgent')}</h3>
+              <p className="text-xs text-text-muted mt-0.5">{t('dashboard.approvedOnly')}</p>
             </div>
           </div>
           <div className="flex-1 min-h-[220px] lg:min-h-[260px]">
@@ -282,7 +284,7 @@ export default function Dashboard() {
                     padding: '10px 14px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                   }}
-                  formatter={(value: any) => [formatUSDC(Number(value)), 'Spent']}
+                  formatter={(value: any) => [formatUSDC(Number(value)), t('dashboard.spent')]}
                   labelStyle={{ color: 'var(--color-ash)', fontSize: '11px', marginBottom: '4px' }}
                 />
                 <Bar
@@ -305,8 +307,8 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary font-display">Budget Distribution</h3>
-              <p className="text-xs text-text-muted mt-0.5">Monthly allocation</p>
+              <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.budgetDistribution')}</h3>
+              <p className="text-xs text-text-muted mt-0.5">{t('dashboard.monthlyAllocation')}</p>
             </div>
             <Activity className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
           </div>
@@ -343,8 +345,8 @@ export default function Dashboard() {
                   formatter={(value: any, _name: any, props: any) => {
                     const spent = props?.payload?.spent || 0;
                     return [
-                      `${formatUSDC(Number(value))} (spent ${formatUSDC(spent)})`,
-                      'Budget',
+                      `${formatUSDC(Number(value))} (${t('dashboard.spent').toLowerCase()} ${formatUSDC(spent)})`,
+                      t('dashboard.budget'),
                     ];
                   }}
                 />
@@ -390,11 +392,11 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary font-display">Recent Transactions</h3>
-              <p className="text-xs text-text-muted mt-0.5">Latest activity across all cards</p>
+              <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.recentTransactions')}</h3>
+              <p className="text-xs text-text-muted mt-0.5">{t('dashboard.latestActivity')}</p>
             </div>
             <button className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors">
-              View all
+              {t('common.viewAll')}
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -428,7 +430,7 @@ export default function Dashboard() {
                           tx.status === 'APPROVED' ? 'status-approved' : 'status-denied'
                         }`}
                       >
-                        {tx.status}
+                        {tx.status === 'APPROVED' ? t('common.approved') : t('common.denied')}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-1">
@@ -436,7 +438,7 @@ export default function Dashboard() {
                         {formatAddr(tx.tx_hash || tx.vendor_address)} · {formatTime(tx.timestamp)}
                       </p>
                       <p className="text-sm font-semibold text-text-primary tabular-nums shrink-0">
-                        {formatCurrency(tx.amount)} <span className="text-text-muted text-xs font-normal">USDC</span>
+                        {formatCurrency(tx.amount)} <span className="text-text-muted text-xs font-normal">{t('common.usdc')}</span>
                       </p>
                     </div>
                   </div>
@@ -448,9 +450,9 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center mb-3">
                 <Clock className="w-5 h-5 text-text-muted" strokeWidth={1.5} />
               </div>
-              <p className="text-sm font-medium text-text-primary">No transactions yet</p>
+              <p className="text-sm font-medium text-text-primary">{t('dashboard.noTransactions')}</p>
               <p className="text-xs text-text-muted mt-1 max-w-[200px]">
-                Payment activity will appear here once agents start spending
+                {t('dashboard.noTransactionsDesc')}
               </p>
             </div>
           )}
@@ -460,11 +462,11 @@ export default function Dashboard() {
         <div className="glass-card rounded-im p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary font-display">Anomalies & Alerts</h3>
-              <p className="text-xs text-text-muted mt-0.5">Flagged by policy engine</p>
+              <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.anomaliesAlerts')}</h3>
+              <p className="text-xs text-text-muted mt-0.5">{t('dashboard.flaggedByPolicy')}</p>
             </div>
             <span className="text-[11px] font-bold text-accent-amber px-2 py-0.5 rounded-full bg-accent-amber/10 border border-accent-amber/20 shrink-0">
-              {summary.anomalies.length} flagged
+              {summary.anomalies.length} {t('dashboard.flagged')}
             </span>
           </div>
           {summary.anomalies.length > 0 ? (
@@ -478,7 +480,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${a.alert === 'blocked' ? 'bg-accent-coral' : 'bg-accent-amber'}`} />
                       <span className="text-xs font-semibold text-text-primary">
-                        {a.alert === 'blocked' ? 'Blocked' : 'Human Review'}
+                        {a.alert === 'blocked' ? t('common.blocked') : t('dashboard.humanReview')}
                       </span>
                     </div>
                     <span className="text-[10px] text-text-muted font-mono">{a.tx_id}</span>
@@ -486,10 +488,10 @@ export default function Dashboard() {
                   <p className="text-[11px] text-text-secondary mt-1.5 ml-4 leading-relaxed">{a.reason}</p>
                   <div className="flex items-center gap-3 mt-2 ml-4">
                     <span className="text-[11px] text-text-muted">
-                      Agent: <span className="text-text-secondary">{a.agent.split('-')[1]}</span>
+                      {t('dashboard.agent')}: <span className="text-text-secondary">{a.agent.split('-')[1]}</span>
                     </span>
                     <span className="text-xs font-semibold text-accent-coral tabular-nums">
-                      {formatCurrency(a.amount)} USDC
+                      {formatCurrency(a.amount)} {t('common.usdc')}
                     </span>
                   </div>
                 </div>
@@ -500,9 +502,9 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full bg-accent-patina/10 flex items-center justify-center mb-3">
                 <ShieldCheck className="w-5 h-5 text-accent-patina" strokeWidth={1.5} />
               </div>
-              <p className="text-sm font-medium text-text-primary">No anomalies detected</p>
+              <p className="text-sm font-medium text-text-primary">{t('dashboard.noAnomalies')}</p>
               <p className="text-xs text-text-muted mt-1 max-w-[200px]">
-                All transactions passed policy checks this period
+                {t('dashboard.noAnomaliesDesc')}
               </p>
             </div>
           )}
