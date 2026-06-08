@@ -24,4 +24,15 @@ i18n
     },
   });
 
+/* Sync <html lang> with i18n so CSS :lang() / [lang] selectors work */
+function syncDocumentLang(lng: string) {
+  document.documentElement.setAttribute('lang', lng);
+}
+
+// Set initial lang after init
+syncDocumentLang(i18n.language || 'en');
+
+// Keep in sync on every change
+i18n.on('languageChanged', syncDocumentLang);
+
 export default i18n;

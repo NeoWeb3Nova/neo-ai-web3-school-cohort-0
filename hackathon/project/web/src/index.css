@@ -106,6 +106,87 @@
   p {
     text-wrap: pretty;
   }
+
+  /* ─── Chinese typography optimization ─── */
+  /* Sync html lang attribute with i18n */
+  html[lang="zh"] {
+    /* Chinese needs slightly larger line-height for readability */
+    --lh-body-zh: 1.75;
+    --lh-heading-zh: 1.4;
+  }
+
+  html[lang="zh"] body {
+    line-height: var(--lh-body-zh);
+    /* Near-zero letter-spacing for Chinese; CJK glyphs are already spaced */
+    letter-spacing: 0.01em;
+    /* Ensure proper text rendering for CJK */
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Chinese headings: heavier strokes need tighter line-height */
+  html[lang="zh"] h1,
+  html[lang="zh"] h2,
+  html[lang="zh"] h3 {
+    line-height: var(--lh-heading-zh);
+    /* Chinese bold (700) often looks too heavy; prefer 500-600 */
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  /* Keep h1 slightly bolder for hierarchy */
+  html[lang="zh"] h1 {
+    font-weight: 600;
+    letter-spacing: 0.015em;
+  }
+
+  /* Chinese body text: comfortable measure and wrapping */
+  html[lang="zh"] p,
+  html[lang="zh"] li,
+  html[lang="zh"] td {
+    line-height: 1.8;
+  }
+
+  /* Prevent overflow on long CJK strings without spaces */
+  html[lang="zh"] * {
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* Code and data in Chinese context */
+  html[lang="zh"] code,
+  html[lang="zh"] pre,
+  html[lang="zh"] .font-mono {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  /* Form inputs in Chinese */
+  html[lang="zh"] input,
+  html[lang="zh"] textarea,
+  html[lang="zh"] select {
+    letter-spacing: 0.01em;
+  }
+
+  /* Light-on-dark compensation for Chinese (three axes) */
+  html.dark[lang="zh"] body,
+  .dark html[lang="zh"] body {
+    line-height: 1.8;
+    letter-spacing: 0.02em;
+  }
+
+  html.dark[lang="zh"] h1,
+  html.dark[lang="zh"] h2,
+  html.dark[lang="zh"] h3 {
+    font-weight: 500; /* Step up weight in dark */
+    line-height: 1.45;
+  }
+}
+
+/* Ensure Noto Sans SC loads with swap to prevent FOIT */
+@font-face {
+  font-family: 'Noto Sans SC';
+  font-display: swap;
+  src: local('Noto Sans SC');
 }
 
 @layer utilities {
