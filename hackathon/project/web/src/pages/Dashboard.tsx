@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   CreditCard,
   TrendingUp,
@@ -24,10 +24,9 @@ import {
   Cell,
 } from 'recharts';
 import { INITIAL_CARDS, INITIAL_TRANSACTIONS, MONTHLY_SUMMARY } from '../data/mockData';
+import { CHART, PIE_COLORS } from '../data/chartTheme';
 
-const COLORS = ['#00D26A', '#3B82F6', '#F59E0B', '#8B5CF6', '#FF4D4D'];
-
-const TIME_RANGES = ['24H', '7D', '30D', 'ALL'] as const;
+const COLORS = PIE_COLORS;
 
 function formatCurrency(value: number): string {
   return value.toLocaleString('en-US', {
@@ -41,8 +40,6 @@ function formatUSDC(value: number): string {
 }
 
 export default function Dashboard() {
-  const [timeRange, setTimeRange] = useState<(typeof TIME_RANGES)[number]>('ALL');
-
   const stats = useMemo(() => {
     const activeCards = INITIAL_CARDS.filter((c) => c.status === 'ACTIVE').length;
     const pendingCards = INITIAL_CARDS.filter((c) => c.status === 'PENDING_APPROVAL').length;
@@ -77,7 +74,6 @@ export default function Dashboard() {
         : 'Design Agent';
       data[name] = (data[name] || 0) + t.amount;
     });
-    // Ensure all agents appear even with 0
     const agents = ['Content Agent', 'Ad Agent', 'Design Agent'];
     return agents.map((name) => ({ name, value: data[name] || 0 }));
   }, []);
@@ -110,42 +106,42 @@ export default function Dashboard() {
     : '0.0';
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* Top Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
         {/* Treasury Balance */}
-        <div className="glass-card rounded-xl p-5 transition-all duration-200 hover:border-border-hover hover:shadow-lg hover:shadow-black/20">
+        <div className="glass-card rounded-xl p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-widest">
-              Treasury Balance
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+              Treasury balance
             </span>
-            <div className="w-8 h-8 rounded-lg bg-accent-green/10 flex items-center justify-center">
-              <CreditCard className="w-4 h-4 text-accent-green" strokeWidth={1.5} />
+            <div className="w-8 h-8 rounded-lg bg-accent-gold/10 flex items-center justify-center">
+              <CreditCard className="w-4 h-4 text-accent-gold" strokeWidth={1.5} />
             </div>
           </div>
-          <p className="text-2xl font-bold text-text-primary tracking-tight">
+          <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {formatCurrency(treasuryBalance)}{' '}
             <span className="text-sm font-medium text-text-muted">USDC</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
-            <ArrowUpRight className="w-3.5 h-3.5 text-accent-green" strokeWidth={2} />
-            <span className="text-xs font-medium text-accent-green">
+            <ArrowUpRight className="w-3.5 h-3.5 text-accent-gold" strokeWidth={2} />
+            <span className="text-xs font-medium text-accent-gold">
               {utilizationRate}% utilized
             </span>
           </div>
         </div>
 
         {/* Active Cards */}
-        <div className="glass-card rounded-xl p-5 transition-all duration-200 hover:border-border-hover hover:shadow-lg hover:shadow-black/20">
+        <div className="glass-card rounded-xl p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-widest">
-              Active Cards
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+              Active cards
             </span>
-            <div className="w-8 h-8 rounded-lg bg-accent-blue/10 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-accent-blue" strokeWidth={1.5} />
+            <div className="w-8 h-8 rounded-lg bg-accent-slate/10 flex items-center justify-center">
+              <Bot className="w-4 h-4 text-accent-slate" strokeWidth={1.5} />
             </div>
           </div>
-          <p className="text-2xl font-bold text-text-primary tracking-tight">
+          <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {stats.activeCards}
             <span className="text-sm font-medium text-text-muted ml-1">
               <span className="text-text-muted/60">/</span> {INITIAL_CARDS.length}
@@ -153,7 +149,7 @@ export default function Dashboard() {
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             {stats.pendingCards > 0 ? (
-              <button className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-accent-orange/10 border border-accent-orange/20 text-accent-orange text-xs font-medium hover:bg-accent-orange/20 transition-colors cursor-pointer">
+              <button className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-accent-amber/10 border border-accent-amber/20 text-accent-amber text-xs font-medium hover:bg-accent-amber/20 transition-colors cursor-pointer">
                 <Clock className="w-3 h-3" strokeWidth={2} />
                 {stats.pendingCards} pending approval
               </button>
@@ -164,44 +160,44 @@ export default function Dashboard() {
         </div>
 
         {/* Approved Volume */}
-        <div className="glass-card rounded-xl p-5 transition-all duration-200 hover:border-border-hover hover:shadow-lg hover:shadow-black/20">
+        <div className="glass-card rounded-xl p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-widest">
-              Approved Volume
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+              Approved volume
             </span>
-            <div className="w-8 h-8 rounded-lg bg-accent-green/10 flex items-center justify-center">
-              <TrendingUp className="w-4 h-4 text-accent-green" strokeWidth={1.5} />
+            <div className="w-8 h-8 rounded-lg bg-accent-patina/10 flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
             </div>
           </div>
-          <p className="text-2xl font-bold text-text-primary tracking-tight">
+          <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {formatCurrency(stats.totalApproved)}{' '}
             <span className="text-sm font-medium text-text-muted">USDC</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
-            <ArrowUpRight className="w-3.5 h-3.5 text-accent-green" strokeWidth={2} />
-            <span className="text-xs font-medium text-accent-green">
+            <ArrowUpRight className="w-3.5 h-3.5 text-accent-patina" strokeWidth={2} />
+            <span className="text-xs font-medium text-accent-patina">
               {stats.approvedCount} transactions
             </span>
           </div>
         </div>
 
         {/* Threats Blocked */}
-        <div className="glass-card rounded-xl p-5 transition-all duration-200 hover:border-border-hover hover:shadow-lg hover:shadow-black/20">
+        <div className="glass-card rounded-xl p-4 lg:p-5 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-widest">
-              Threats Blocked
+            <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+              Threats blocked
             </span>
-            <div className="w-8 h-8 rounded-lg bg-accent-red/10 flex items-center justify-center">
-              <ShieldCheck className="w-4 h-4 text-accent-red" strokeWidth={1.5} />
+            <div className="w-8 h-8 rounded-lg bg-accent-coral/10 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-accent-coral" strokeWidth={1.5} />
             </div>
           </div>
-          <p className="text-2xl font-bold text-text-primary tracking-tight">
+          <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
             {stats.deniedCount}
             <span className="text-sm font-medium text-text-muted ml-1.5">attacks</span>
           </p>
           <div className="flex items-center gap-1.5 mt-2">
-            <ArrowDownRight className="w-3.5 h-3.5 text-accent-green" strokeWidth={2} />
-            <span className="text-xs font-medium text-accent-green">
+            <ArrowDownRight className="w-3.5 h-3.5 text-accent-patina" strokeWidth={2} />
+            <span className="text-xs font-medium text-accent-patina">
               {formatCurrency(stats.totalDenied)} USDC saved
             </span>
           </div>
@@ -209,61 +205,46 @@ export default function Dashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 items-stretch">
         {/* Spending by Agent */}
-        <div className="glass-card rounded-xl p-5 lg:col-span-2 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-xl p-4 lg:p-5 lg:col-span-2 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Spending by Agent</h3>
+              <h3 className="text-sm font-semibold text-text-primary font-display italic">Spending by Agent</h3>
               <p className="text-xs text-text-muted mt-0.5">Approved transactions only</p>
             </div>
-            <div className="flex items-center gap-1 bg-bg-primary rounded-lg p-0.5 border border-border-default">
-              {TIME_RANGES.map((range) => (
-                <button
-                  key={range}
-                  onClick={() => setTimeRange(range)}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    timeRange === range
-                      ? 'bg-bg-card text-text-primary shadow-sm'
-                      : 'text-text-muted hover:text-text-secondary'
-                  }`}
-                >
-                  {range}
-                </button>
-              ))}
-            </div>
           </div>
-          <div className="flex-1 min-h-[260px]">
+          <div className="flex-1 min-h-[220px] lg:min-h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={spendingByAgent}
                 margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
                 barCategoryGap="24%"
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#2E3640" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
                 <XAxis
                   dataKey="name"
-                  tick={{ fill: '#8B949E', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
-                  axisLine={{ stroke: '#2E3640' }}
+                  tick={{ fill: CHART.axis, fontSize: 11, fontFamily: 'Albert Sans, sans-serif' }}
+                  axisLine={{ stroke: CHART.grid }}
                   tickLine={false}
                   dy={8}
                 />
                 <YAxis
-                  tick={{ fill: '#8B949E', fontSize: 11, fontFamily: 'Inter, sans-serif' }}
+                  tick={{ fill: CHART.axis, fontSize: 11, fontFamily: 'Albert Sans, sans-serif' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v) => `$${v}`}
                   width={50}
                 />
                 <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                  cursor={{ fill: CHART.cursor }}
                   contentStyle={{
-                    backgroundColor: '#1C2128',
-                    border: '1px solid #2E3640',
+                    backgroundColor: CHART.tooltipBg,
+                    border: `1px solid ${CHART.tooltipBorder}`,
                     borderRadius: '10px',
-                    color: '#FFFFFF',
+                    color: CHART.tooltipText,
                     fontSize: '12px',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Albert Sans, sans-serif',
                     padding: '10px 14px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                   }}
@@ -287,23 +268,23 @@ export default function Dashboard() {
         </div>
 
         {/* Budget Distribution */}
-        <div className="glass-card rounded-xl p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-xl p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Budget Distribution</h3>
+              <h3 className="text-sm font-semibold text-text-primary font-display italic">Budget Distribution</h3>
               <p className="text-xs text-text-muted mt-0.5">Monthly allocation</p>
             </div>
             <Activity className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
           </div>
-          <div className="flex-1 min-h-[180px] flex items-center justify-center">
+          <div className="flex-1 min-h-[160px] lg:min-h-[180px] flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={budgetDistribution}
                   cx="50%"
                   cy="50%"
-                  innerRadius={52}
-                  outerRadius={78}
+                  innerRadius={48}
+                  outerRadius={72}
                   paddingAngle={3}
                   dataKey="value"
                   stroke="none"
@@ -316,12 +297,12 @@ export default function Dashboard() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#1C2128',
-                    border: '1px solid #2E3640',
+                    backgroundColor: CHART.tooltipBg,
+                    border: `1px solid ${CHART.tooltipBorder}`,
                     borderRadius: '10px',
-                    color: '#FFFFFF',
+                    color: CHART.tooltipText,
                     fontSize: '12px',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Albert Sans, sans-serif',
                     padding: '10px 14px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
                   }}
@@ -349,7 +330,7 @@ export default function Dashboard() {
                     <span className="text-xs text-text-secondary">{card.name}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-16 h-1 rounded-full bg-bg-primary overflow-hidden">
+                    <div className="w-12 lg:w-16 h-1 rounded-full bg-bg-primary overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -358,7 +339,7 @@ export default function Dashboard() {
                         }}
                       />
                     </div>
-                    <span className="text-xs text-text-primary font-medium tabular-nums w-14 text-right">
+                    <span className="text-xs text-text-primary font-medium tabular-nums w-12 lg:w-14 text-right">
                       {formatUSDC(card.value)}
                     </span>
                   </div>
@@ -370,12 +351,12 @@ export default function Dashboard() {
       </div>
 
       {/* Recent Transactions + Anomalies */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 items-stretch">
         {/* Recent Transactions */}
-        <div className="glass-card rounded-xl p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-xl p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Recent Transactions</h3>
+              <h3 className="text-sm font-semibold text-text-primary font-display italic">Recent Transactions</h3>
               <p className="text-xs text-text-muted mt-0.5">Latest activity across all cards</p>
             </div>
             <button className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-text-secondary transition-colors">
@@ -383,90 +364,114 @@ export default function Dashboard() {
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="space-y-2 flex-1">
-            {recentTransactions.map((tx) => (
-              <div
-                key={tx.tx_id}
-                className="flex items-center gap-3 p-3 rounded-lg bg-bg-primary/40 border border-border-default/40 hover:border-border-hover hover:bg-bg-primary/60 transition-all duration-200 cursor-pointer group"
-              >
+          {recentTransactions.length > 0 ? (
+            <div className="space-y-2 flex-1">
+              {recentTransactions.map((tx) => (
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                    tx.status === 'APPROVED'
-                      ? 'bg-accent-green/10'
-                      : 'bg-accent-red/10'
-                  }`}
+                  key={tx.tx_id}
+                  className="flex items-center gap-3 p-2.5 lg:p-3 rounded-lg bg-bg-primary/40 border border-border-default/40 hover:border-border-hover hover:bg-bg-primary/60 transition-all duration-200 cursor-pointer group"
                 >
-                  {tx.status === 'APPROVED' ? (
-                    <ArrowUpRight className="w-4 h-4 text-accent-green" strokeWidth={2} />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-accent-red" strokeWidth={2} />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-text-primary truncate group-hover:text-accent-green transition-colors">
-                      {tx.vendor}
-                    </p>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                        tx.status === 'APPROVED' ? 'status-approved' : 'status-denied'
-                      }`}
-                    >
-                      {tx.status}
-                    </span>
+                  <div
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                      tx.status === 'APPROVED'
+                        ? 'bg-accent-patina/10'
+                        : 'bg-accent-coral/10'
+                    }`}
+                  >
+                    {tx.status === 'APPROVED' ? (
+                      <ArrowUpRight className="w-4 h-4 text-accent-patina" strokeWidth={2} />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-accent-coral" strokeWidth={2} />
+                    )}
                   </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <p className="text-[11px] text-text-muted font-mono">
-                      {formatAddr(tx.tx_hash || tx.vendor_address)} · {formatTime(tx.timestamp)}
-                    </p>
-                    <p className="text-sm font-semibold text-text-primary tabular-nums">
-                      {formatCurrency(tx.amount)} <span className="text-text-muted text-xs font-normal">USDC</span>
-                    </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-text-primary truncate group-hover:text-accent-patina transition-colors">
+                        {tx.vendor}
+                      </p>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${
+                          tx.status === 'APPROVED' ? 'status-approved' : 'status-denied'
+                        }`}
+                      >
+                        {tx.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[11px] text-text-muted font-mono truncate mr-2">
+                        {formatAddr(tx.tx_hash || tx.vendor_address)} · {formatTime(tx.timestamp)}
+                      </p>
+                      <p className="text-sm font-semibold text-text-primary tabular-nums shrink-0">
+                        {formatCurrency(tx.amount)} <span className="text-text-muted text-xs font-normal">USDC</span>
+                      </p>
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+              <div className="w-10 h-10 rounded-full bg-bg-hover flex items-center justify-center mb-3">
+                <Clock className="w-5 h-5 text-text-muted" strokeWidth={1.5} />
               </div>
-            ))}
-          </div>
+              <p className="text-sm font-medium text-text-primary">No transactions yet</p>
+              <p className="text-xs text-text-muted mt-1 max-w-[200px]">
+                Payment activity will appear here once agents start spending
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Anomalies */}
-        <div className="glass-card rounded-xl p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-xl p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-text-primary">Anomalies & Alerts</h3>
+              <h3 className="text-sm font-semibold text-text-primary font-display italic">Anomalies & Alerts</h3>
               <p className="text-xs text-text-muted mt-0.5">Flagged by policy engine</p>
             </div>
-            <span className="text-[11px] font-bold text-accent-orange px-2 py-0.5 rounded-full bg-accent-orange/10 border border-accent-orange/20">
+            <span className="text-[11px] font-bold text-accent-amber px-2 py-0.5 rounded-full bg-accent-amber/10 border border-accent-amber/20 shrink-0">
               {MONTHLY_SUMMARY.anomalies.length} flagged
             </span>
           </div>
-          <div className="space-y-2 flex-1">
-            {MONTHLY_SUMMARY.anomalies.map((a, i) => (
-              <div
-                key={i}
-                className="p-3 rounded-lg bg-bg-primary/40 border border-border-default/40 hover:border-accent-red/30 transition-all duration-200"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${a.alert === 'blocked' ? 'bg-accent-red' : 'bg-accent-orange'}`} />
-                    <span className="text-xs font-semibold text-text-primary uppercase tracking-wider">
-                      {a.alert === 'blocked' ? 'Blocked' : 'Human Review'}
+          {MONTHLY_SUMMARY.anomalies.length > 0 ? (
+            <div className="space-y-2 flex-1">
+              {MONTHLY_SUMMARY.anomalies.map((a, i) => (
+                <div
+                  key={i}
+                  className="p-2.5 lg:p-3 rounded-lg bg-bg-primary/40 border border-border-default/40 hover:border-accent-coral/30 transition-all duration-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${a.alert === 'blocked' ? 'bg-accent-coral' : 'bg-accent-amber'}`} />
+                      <span className="text-xs font-semibold text-text-primary">
+                        {a.alert === 'blocked' ? 'Blocked' : 'Human Review'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-text-muted font-mono">{a.tx_id}</span>
+                  </div>
+                  <p className="text-[11px] text-text-secondary mt-1.5 ml-4 leading-relaxed">{a.reason}</p>
+                  <div className="flex items-center gap-3 mt-2 ml-4">
+                    <span className="text-[11px] text-text-muted">
+                      Agent: <span className="text-text-secondary">{a.agent.split('-')[1]}</span>
+                    </span>
+                    <span className="text-xs font-semibold text-accent-coral tabular-nums">
+                      {formatCurrency(a.amount)} USDC
                     </span>
                   </div>
-                  <span className="text-[10px] text-text-muted font-mono">{a.tx_id}</span>
                 </div>
-                <p className="text-[11px] text-text-secondary mt-1.5 ml-4 leading-relaxed">{a.reason}</p>
-                <div className="flex items-center gap-3 mt-2 ml-4">
-                  <span className="text-[11px] text-text-muted">
-                    Agent: <span className="text-text-secondary">{a.agent.split('-')[1]}</span>
-                  </span>
-                  <span className="text-xs font-semibold text-accent-red tabular-nums">
-                    {formatCurrency(a.amount)} USDC
-                  </span>
-                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+              <div className="w-10 h-10 rounded-full bg-accent-patina/10 flex items-center justify-center mb-3">
+                <ShieldCheck className="w-5 h-5 text-accent-patina" strokeWidth={1.5} />
               </div>
-            ))}
-          </div>
+              <p className="text-sm font-medium text-text-primary">No anomalies detected</p>
+              <p className="text-xs text-text-muted mt-1 max-w-[200px]">
+                All transactions passed policy checks this period
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

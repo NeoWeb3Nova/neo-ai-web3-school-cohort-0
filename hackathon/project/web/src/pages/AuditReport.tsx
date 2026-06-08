@@ -23,6 +23,7 @@ import {
   Area,
 } from 'recharts';
 import { INITIAL_TRANSACTIONS, MONTHLY_SUMMARY } from '../data/mockData';
+import { CHART, COLORS } from '../data/chartTheme';
 
 export default function AuditReport() {
   const [format, setFormat] = useState<'markdown' | 'csv'>('markdown');
@@ -52,7 +53,7 @@ export default function AuditReport() {
 
   const generateMarkdown = () => {
     const lines: string[] = [];
-    lines.push('# OPC Agent Treasury — Monthly Audit Report');
+    lines.push('# OPC Agent Treasury \u2014 Monthly Audit Report');
     lines.push(`**Month**: ${MONTHLY_SUMMARY.month}  `);
     lines.push(`**Generated at**: ${MONTHLY_SUMMARY.generated_at}  `);
     lines.push('');
@@ -108,31 +109,31 @@ export default function AuditReport() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* Report Header */}
-      <div className="glass-card rounded-xl p-5">
-        <div className="flex items-start justify-between">
+      <div className="glass-card rounded-xl p-4 lg:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent-blue/10 flex items-center justify-center">
-              <FileText className="w-6 h-6 text-accent-blue" strokeWidth={1.5} />
+            <div className="w-12 h-12 rounded-xl bg-accent-slate/10 flex items-center justify-center shrink-0">
+              <FileText className="w-6 h-6 text-accent-slate" strokeWidth={1.5} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-text-primary">
+              <h2 className="text-base font-semibold text-text-primary font-display italic">
                 Monthly Audit Report
               </h2>
               <p className="text-sm text-text-secondary mt-0.5">
-                {MONTHLY_SUMMARY.month} · Generated {new Date(MONTHLY_SUMMARY.generated_at).toLocaleString()}
+                {MONTHLY_SUMMARY.month} \u00b7 Generated {new Date(MONTHLY_SUMMARY.generated_at).toLocaleString()}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center bg-bg-primary rounded-lg border border-border-default p-0.5">
+          <div className="flex items-center gap-3 self-start sm:self-auto">
+            <div className="flex items-center bg-bg-card rounded-lg border border-border-default p-0.5">
               <button
                 onClick={() => setFormat('markdown')}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   format === 'markdown'
-                    ? 'bg-accent-blue text-white'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-accent-gold text-bg-primary'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
                 }`}
               >
                 Markdown
@@ -141,8 +142,8 @@ export default function AuditReport() {
                 onClick={() => setFormat('csv')}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   format === 'csv'
-                    ? 'bg-accent-blue text-white'
-                    : 'text-text-secondary hover:text-text-primary'
+                    ? 'bg-accent-gold text-bg-primary'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
                 }`}
               >
                 CSV
@@ -150,7 +151,7 @@ export default function AuditReport() {
             </div>
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-accent-green text-bg-primary rounded-lg text-sm font-semibold hover:bg-accent-green/90"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm btn-gold"
             >
               <Download className="w-4 h-4" strokeWidth={1.5} />
               Export
@@ -160,42 +161,42 @@ export default function AuditReport() {
       </div>
 
       {/* Financial Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-card rounded-xl p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-secondary uppercase tracking-wider">Income</span>
-            <TrendingUp className="w-4 h-4 text-accent-green" strokeWidth={1.5} />
+            <span className="text-xs text-text-secondary">Income</span>
+            <TrendingUp className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
           </div>
-          <p className="text-xl font-bold text-text-primary">
+          <p className="text-lg lg:text-xl font-bold text-text-primary">
             {MONTHLY_SUMMARY.total_income_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
           </p>
         </div>
-        <div className="glass-card rounded-xl p-5">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-secondary uppercase tracking-wider">Approved</span>
-            <CheckCircle className="w-4 h-4 text-accent-green" strokeWidth={1.5} />
+            <span className="text-xs text-text-secondary">Approved</span>
+            <CheckCircle className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
           </div>
-          <p className="text-xl font-bold text-accent-green">
+          <p className="text-lg lg:text-xl font-bold text-accent-patina">
             {MONTHLY_SUMMARY.total_approved_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
           </p>
           <p className="text-xs text-text-muted mt-1">{MONTHLY_SUMMARY.transaction_count - MONTHLY_SUMMARY.denied_count} transactions</p>
         </div>
-        <div className="glass-card rounded-xl p-5">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-secondary uppercase tracking-wider">Denied</span>
-            <XCircle className="w-4 h-4 text-accent-red" strokeWidth={1.5} />
+            <span className="text-xs text-text-secondary">Denied</span>
+            <XCircle className="w-4 h-4 text-accent-coral" strokeWidth={1.5} />
           </div>
-          <p className="text-xl font-bold text-accent-red">
+          <p className="text-lg lg:text-xl font-bold text-accent-coral">
             {MONTHLY_SUMMARY.total_denied_usd.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
           </p>
           <p className="text-xs text-text-muted mt-1">{MONTHLY_SUMMARY.denied_count} blocked</p>
         </div>
-        <div className="glass-card rounded-xl p-5">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-text-secondary uppercase tracking-wider">Savings Rate</span>
-            <TrendingDown className="w-4 h-4 text-accent-blue" strokeWidth={1.5} />
+            <span className="text-xs text-text-secondary">Savings rate</span>
+            <TrendingDown className="w-4 h-4 text-accent-slate" strokeWidth={1.5} />
           </div>
-          <p className="text-xl font-bold text-accent-blue">
+          <p className="text-lg lg:text-xl font-bold text-accent-slate">
             {((MONTHLY_SUMMARY.total_denied_usd / (MONTHLY_SUMMARY.total_approved_usd + MONTHLY_SUMMARY.total_denied_usd)) * 100).toFixed(1)}%
           </p>
           <p className="text-xs text-text-muted mt-1">Threats prevented</p>
@@ -203,48 +204,48 @@ export default function AuditReport() {
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
         {/* Spending Trend */}
-        <div className="glass-card rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
+          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2 font-display italic">
             <Calendar className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
             Daily Activity
           </h3>
-          <div className="h-56">
+          <div className="h-52 lg:h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={spendingTrend}>
                 <defs>
                   <linearGradient id="colorApproved" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00D26A" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#00D26A" stopOpacity={0} />
+                    <stop offset="5%" stopColor={COLORS.gold} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={COLORS.gold} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2E3640" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: '#8B949E', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#8B949E', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} vertical={false} />
+                <XAxis dataKey="day" tick={{ fill: CHART.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: CHART.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#1C2128', border: '1px solid #2E3640', borderRadius: '8px', color: '#FFFFFF' }}
+                  contentStyle={{ backgroundColor: CHART.tooltipBg, border: `1px solid ${CHART.tooltipBorder}`, borderRadius: '8px', color: CHART.tooltipText }}
                 />
-                <Area type="monotone" dataKey="approved" stroke="#00D26A" fillOpacity={1} fill="url(#colorApproved)" />
+                <Area type="monotone" dataKey="approved" stroke={COLORS.gold} fillOpacity={1} fill="url(#colorApproved)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* By Vendor */}
-        <div className="glass-card rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">Spending by Vendor</h3>
-          <div className="h-56">
+        <div className="glass-card rounded-xl p-4 lg:p-5">
+          <h3 className="text-sm font-semibold text-text-primary mb-4 font-display italic">Spending by Vendor</h3>
+          <div className="h-52 lg:h-56">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byVendor} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#2E3640" horizontal={false} />
-                <XAxis type="number" tick={{ fill: '#8B949E', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis dataKey="name" type="category" tick={{ fill: '#8B949E', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
+                <XAxis type="number" tick={{ fill: CHART.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis dataKey="name" type="category" tick={{ fill: CHART.axis, fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#1C2128', border: '1px solid #2E3640', borderRadius: '8px', color: '#FFFFFF' }}
+                  contentStyle={{ backgroundColor: CHART.tooltipBg, border: `1px solid ${CHART.tooltipBorder}`, borderRadius: '8px', color: CHART.tooltipText }}
                   formatter={(value: any) => [`$${value}`, 'Spent']}
                 />
-                <Bar dataKey="amount" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="amount" fill={COLORS.gold} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -253,20 +254,20 @@ export default function AuditReport() {
 
       {/* Transaction Table */}
       <div className="glass-card rounded-xl overflow-hidden">
-        <div className="p-5 border-b border-border-default">
-          <h3 className="text-sm font-semibold text-text-primary">Transaction Ledger</h3>
+        <div className="p-4 lg:p-5 border-b border-border-default">
+          <h3 className="text-sm font-semibold text-text-primary font-display italic">Transaction Ledger</h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[700px]">
             <thead>
               <tr className="border-b border-border-default text-left">
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Status</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Tx ID</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Agent</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Vendor</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider text-right">Amount</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Time</th>
-                <th className="px-5 py-3 text-xs font-medium text-text-muted uppercase tracking-wider">Alert</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted">Status</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted">Tx ID</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted hidden sm:table-cell">Agent</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted hidden md:table-cell">Vendor</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted text-right">Amount</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted hidden lg:table-cell">Time</th>
+                <th className="px-3 md:px-5 py-3 text-xs font-medium text-text-muted hidden md:table-cell">Alert</th>
               </tr>
             </thead>
             <tbody>
@@ -274,7 +275,7 @@ export default function AuditReport() {
                 .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                 .map((tx) => (
                   <tr key={tx.tx_id} className="border-b border-border-default/50 hover:bg-bg-hover/50 transition-colors">
-                    <td className="px-5 py-3">
+                    <td className="px-3 md:px-5 py-3">
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                           tx.status === 'APPROVED' ? 'status-approved' : 'status-denied'
@@ -288,31 +289,31 @@ export default function AuditReport() {
                         {tx.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-text-secondary">
+                    <td className="px-3 md:px-5 py-3 font-mono text-xs text-text-secondary">
                       <div className="flex items-center gap-1">
-                        <Hash className="w-3 h-3 text-text-muted" strokeWidth={1.5} />
+                        <Hash className="w-3 h-3 text-text-muted hidden sm:inline" strokeWidth={1.5} />
                         {tx.tx_id}
                       </div>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 md:px-5 py-3 hidden sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-text-muted" strokeWidth={1.5} />
                         <span className="text-text-primary">{tx.agent_id.split('-')[1]}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-text-primary">{tx.vendor}</td>
-                    <td className="px-5 py-3 text-right font-medium text-text-primary">
+                    <td className="px-3 md:px-5 py-3 text-text-primary hidden md:table-cell">{tx.vendor}</td>
+                    <td className="px-3 md:px-5 py-3 text-right font-medium text-text-primary">
                       {tx.amount.toFixed(2)} USDC
                     </td>
-                    <td className="px-5 py-3 text-xs text-text-muted">{formatTime(tx.timestamp)}</td>
-                    <td className="px-5 py-3">
+                    <td className="px-3 md:px-5 py-3 text-xs text-text-muted hidden lg:table-cell">{formatTime(tx.timestamp)}</td>
+                    <td className="px-3 md:px-5 py-3 hidden md:table-cell">
                       {tx.alert_level !== 'none' ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-accent-orange">
+                        <span className="inline-flex items-center gap-1 text-xs text-accent-amber">
                           <AlertTriangle className="w-3 h-3" />
                           {tx.alert_level}
                         </span>
                       ) : (
-                        <span className="text-xs text-text-muted">—</span>
+                        <span className="text-xs text-text-muted">\u2014</span>
                       )}
                     </td>
                   </tr>
@@ -324,35 +325,35 @@ export default function AuditReport() {
 
       {/* Anomalies Section */}
       {MONTHLY_SUMMARY.anomalies.length > 0 && (
-        <div className="glass-card rounded-xl p-5 border-accent-orange/20">
-          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-accent-orange" />
+        <div className="glass-card rounded-xl p-4 lg:p-5 border-accent-amber/20">
+          <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2 font-display italic">
+            <AlertTriangle className="w-4 h-4 text-accent-amber" />
             Anomalies Requiring Attention
           </h3>
           <div className="space-y-2">
             {MONTHLY_SUMMARY.anomalies.map((a, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between p-3 rounded-lg bg-bg-primary/50 border border-border-default"
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg bg-bg-primary/50 border border-border-default gap-2"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
                       a.alert === 'blocked'
-                        ? 'bg-accent-red/10 text-accent-red'
-                        : 'bg-accent-orange/10 text-accent-orange'
+                        ? 'bg-accent-coral/10 text-accent-coral'
+                        : 'bg-accent-amber/10 text-accent-amber'
                     }`}
                   >
                     {a.alert}
                   </span>
-                  <div>
-                    <p className="text-sm text-text-primary">{a.reason}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm text-text-primary truncate">{a.reason}</p>
                     <p className="text-xs text-text-muted">
-                      {a.tx_id} · {a.agent.split('-')[1]}
+                      {a.tx_id} \u00b7 {a.agent.split('-')[1]}
                     </p>
                   </div>
                 </div>
-                <span className="text-sm font-semibold text-accent-red">{a.amount.toFixed(2)} USDC</span>
+                <span className="text-sm font-semibold text-accent-coral shrink-0 sm:text-right">{a.amount.toFixed(2)} USDC</span>
               </div>
             ))}
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Bot,
   Send,
@@ -7,6 +7,9 @@ import {
   ArrowRight,
   Sparkles,
   Loader2,
+  X,
+  RotateCcw,
+  AlertCircle,
 } from 'lucide-react';
 import { INITIAL_CARDS, type Transaction } from '../data/mockData';
 
@@ -17,11 +20,21 @@ interface PaymentStep {
   detail?: string;
 }
 
+function friendlyReason(raw: string): string {
+  if (raw.includes('scope_denied')) return 'Vendor not on card whitelist';
+  if (raw.includes('per_tx_exceeded')) return 'Amount exceeds single-transaction limit';
+  if (raw.includes('budget_exceeded')) return 'Amount exceeds remaining monthly budget';
+  if (raw.includes('amount must be positive')) return 'Amount must be greater than zero';
+  if (raw.includes('PERMISSION_DENIED')) return 'Card does not have permission for this request';
+  return raw;
+}
+
 export default function AgentConsole() {
   const [selectedCard, setSelectedCard] = useState(INITIAL_CARDS[0].card_id);
   const [vendor, setVendor] = useState('OpenAI');
   const [amount, setAmount] = useState('10');
   const [purpose, setPurpose] = useState('GPT-4 API tokens');
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<{
     status: 'APPROVED' | 'DENIED';
@@ -35,7 +48,29 @@ export default function AgentConsole() {
 
   const vendorOptions = ['OpenAI', 'Midjourney', 'Unsplash', 'Google Ads', 'Twitter Ads'];
 
+  const errors = useMemo(() => {
+    const errs: Record<string, string> = {};
+    const amt = parseFloat(amount) || 0;
+    if (touched.amount || touched.submit) {
+      if (amt <= 0) errs.amount = 'Amount must be greater than 0';
+      else if (amt > card.budget.single_tx_limit) {
+        errs.amount = `Exceeds single-tx limit of $${card.budget.single_tx_limit}`;
+      } else if (amt > card.budget.monthly_max - card.budget.spent) {
+        errs.amount = `Exceeds remaining budget of $${(card.budget.monthly_max - card.budget.spent).toFixed(2)}`;
+      }
+    }
+    if ((touched.purpose || touched.submit) && !purpose.trim()) {
+      errs.purpose = 'Purpose is required';
+    }
+    return errs;
+  }, [amount, purpose, touched, card]);
+
+  const isFormValid = Object.keys(errors).length === 0 && parseFloat(amount) > 0 && purpose.trim().length > 0;
+
   const simulatePayment = () => {
+    setTouched((t) => ({ ...t, amount: true, purpose: true, submit: true }));
+    if (!isFormValid) return;
+
     setIsProcessing(true);
     setResult(null);
 
@@ -51,7 +86,6 @@ export default function AgentConsole() {
 
     const runStep = (index: number) => {
       if (index >= steps.length) {
-        // Final decision
         const isInWhitelist = card.vendor_whitelist.some((v) => v.name === vendor);
         const isBudgetOk = card.budget.spent + amt <= card.budget.monthly_max;
         const isPerTxOk = amt <= card.budget.single_tx_limit;
@@ -62,16 +96,16 @@ export default function AgentConsole() {
 
         if (!isAmountOk) {
           finalStatus = 'DENIED';
-          reason = 'PERMISSION_DENIED: amount must be positive';
+          reason = 'Amount must be greater than zero';
         } else if (!isInWhitelist) {
           finalStatus = 'DENIED';
-          reason = 'POLICY_DENIED: scope_denied';
+          reason = 'Vendor not on card whitelist';
         } else if (!isPerTxOk) {
           finalStatus = 'DENIED';
-          reason = 'POLICY_DENIED: per_tx_exceeded';
+          reason = 'Amount exceeds single-transaction limit';
         } else if (!isBudgetOk) {
           finalStatus = 'DENIED';
-          reason = 'POLICY_DENIED: budget_exceeded';
+          reason = 'Amount exceeds remaining monthly budget';
         }
 
         const tx: Transaction = {
@@ -123,37 +157,43 @@ export default function AgentConsole() {
     runStep(0);
   };
 
+  const handleDismiss = () => setResult(null);
+  const handleRetry = () => {
+    setResult(null);
+    simulatePayment();
+  };
+
   return (
-    <div className="space-y-6 animate-fade-in max-w-4xl">
+    <div className="space-y-5 animate-fade-in max-w-5xl mx-auto">
       {/* Agent Persona */}
-      <div className="glass-card rounded-xl p-5 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-xl bg-accent-blue/10 flex items-center justify-center">
-          <Bot className="w-6 h-6 text-accent-blue" strokeWidth={1.5} />
+      <div className="glass-card rounded-xl p-4 lg:p-5 flex items-center gap-4">
+        <div className="w-12 h-12 rounded-xl bg-accent-slate/10 flex items-center justify-center shrink-0">
+          <Bot className="w-6 h-6 text-accent-slate" strokeWidth={1.5} />
         </div>
-        <div>
-          <h2 className="text-base font-semibold text-text-primary">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-text-primary truncate">
             {card?.agent_name || 'Agent Console'}
           </h2>
-          <p className="text-sm text-text-secondary">
+          <p className="text-sm text-text-secondary truncate">
             Autonomous payment request interface — CAW Policy Engine enforced
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2 shrink-0">
           <span
             className={`w-2 h-2 rounded-full ${
-              card?.status === 'ACTIVE' ? 'bg-accent-green animate-pulse' : 'bg-accent-orange'
+              card?.status === 'ACTIVE' ? 'bg-accent-patina animate-pulse' : 'bg-accent-amber'
             }`}
           />
           <span className="text-xs text-text-muted">{card?.status}</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 lg:gap-4">
         {/* Left: Payment Form */}
         <div className="lg:col-span-3 space-y-4">
-          <div className="glass-card rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-accent-green" strokeWidth={1.5} />
+          <div className="glass-card rounded-xl p-4 lg:p-5">
+            <h3 className="text-sm font-semibold text-text-primary mb-4 font-display italic flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-accent-gold" strokeWidth={1.5} />
               New Payment Request
             </h3>
 
@@ -164,7 +204,7 @@ export default function AgentConsole() {
                 <select
                   value={selectedCard}
                   onChange={(e) => setSelectedCard(e.target.value)}
-                  className="w-full px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-sm text-text-primary focus:border-accent-green focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg text-sm input-kinpaku"
                 >
                   {activeCards.map((c) => (
                     <option key={c.card_id} value={c.card_id}>
@@ -180,7 +220,7 @@ export default function AgentConsole() {
                 <select
                   value={vendor}
                   onChange={(e) => setVendor(e.target.value)}
-                  className="w-full px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-sm text-text-primary focus:border-accent-green focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg text-sm input-kinpaku"
                 >
                   {vendorOptions.map((v) => (
                     <option key={v} value={v}>
@@ -191,25 +231,49 @@ export default function AgentConsole() {
               </div>
 
               {/* Amount + Purpose */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-text-secondary mb-1.5 block">Amount (USDC)</label>
                   <input
                     type="number"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-sm text-text-primary focus:border-accent-green focus:outline-none"
+                    min={0.01}
+                    step={0.01}
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      setTouched((t) => ({ ...t, amount: true }));
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg text-sm input-kinpaku ${
+                      errors.amount ? 'error' : ''
+                    }`}
                   />
+                  {errors.amount && (
+                    <p className="mt-1.5 text-[11px] text-accent-coral flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" strokeWidth={2} />
+                      {errors.amount}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-text-secondary mb-1.5 block">Purpose</label>
                   <input
                     type="text"
                     value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
+                    onChange={(e) => {
+                      setPurpose(e.target.value);
+                      setTouched((t) => ({ ...t, purpose: true }));
+                    }}
                     placeholder="e.g. API tokens"
-                    className="w-full px-3 py-2 bg-bg-primary border border-border-default rounded-lg text-sm text-text-primary placeholder-text-muted focus:border-accent-green focus:outline-none"
+                    className={`w-full px-3 py-2 rounded-lg text-sm input-kinpaku ${
+                      errors.purpose ? 'error' : ''
+                    }`}
                   />
+                  {errors.purpose && (
+                    <p className="mt-1.5 text-[11px] text-accent-coral flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" strokeWidth={2} />
+                      {errors.purpose}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -217,7 +281,7 @@ export default function AgentConsole() {
               <button
                 onClick={simulatePayment}
                 disabled={isProcessing}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-green text-bg-primary rounded-lg text-sm font-semibold hover:bg-accent-green/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessing ? (
                   <>
@@ -237,31 +301,52 @@ export default function AgentConsole() {
           {/* Result */}
           {result && !isProcessing && (
             <div
-              className={`glass-card rounded-xl p-5 border ${
+              className={`glass-card rounded-xl p-4 lg:p-5 border ${
                 result.status === 'APPROVED'
-                  ? 'border-accent-green/30 bg-accent-green/5'
-                  : 'border-accent-red/30 bg-accent-red/5'
+                  ? 'border-accent-patina/30 bg-accent-patina/5'
+                  : 'border-accent-coral/30 bg-accent-coral/5'
               } animate-slide-in`}
             >
-              <div className="flex items-center gap-3 mb-3">
-                {result.status === 'APPROVED' ? (
-                  <CheckCircle className="w-6 h-6 text-accent-green" strokeWidth={1.5} />
-                ) : (
-                  <XCircle className="w-6 h-6 text-accent-red" strokeWidth={1.5} />
-                )}
-                <div>
-                  <h3
-                    className={`text-base font-semibold ${
-                      result.status === 'APPROVED' ? 'text-accent-green' : 'text-accent-red'
-                    }`}
+              <div className="flex items-start justify-between mb-3 gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {result.status === 'APPROVED' ? (
+                    <CheckCircle className="w-6 h-6 text-accent-patina shrink-0" strokeWidth={1.5} />
+                  ) : (
+                    <XCircle className="w-6 h-6 text-accent-coral shrink-0" strokeWidth={1.5} />
+                  )}
+                  <div className="min-w-0">
+                    <h3
+                      className={`text-base font-semibold ${
+                        result.status === 'APPROVED' ? 'text-accent-patina' : 'text-accent-coral'
+                      }`}
+                    >
+                      {result.status === 'APPROVED' ? 'Payment Approved' : 'Payment Denied'}
+                    </h3>
+                    <p className="text-xs text-text-secondary">{friendlyReason(result.reason)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {result.status === 'DENIED' && (
+                    <button
+                      onClick={handleRetry}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs btn-ghost"
+                      title="Retry with same values"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" strokeWidth={1.5} />
+                      Retry
+                    </button>
+                  )}
+                  <button
+                    onClick={handleDismiss}
+                    className="flex items-center justify-center w-7 h-7 rounded-lg text-text-muted hover:text-text-primary btn-ghost"
+                    aria-label="Dismiss result"
                   >
-                    {result.status === 'APPROVED' ? 'Payment Approved' : 'Payment Denied'}
-                  </h3>
-                  <p className="text-xs text-text-secondary">{result.reason}</p>
+                    <X className="w-3.5 h-3.5" strokeWidth={2} />
+                  </button>
                 </div>
               </div>
               {result.tx && (
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="p-2 rounded-lg bg-bg-primary/50">
                     <span className="text-text-muted">Tx ID</span>
                     <p className="font-mono text-text-primary mt-0.5">{result.tx.tx_id}</p>
@@ -271,7 +356,7 @@ export default function AgentConsole() {
                     <p className="text-text-primary mt-0.5">{result.tx.amount.toFixed(2)} USDC</p>
                   </div>
                   {result.tx.tx_hash && (
-                    <div className="p-2 rounded-lg bg-bg-primary/50 col-span-2">
+                    <div className="p-2 rounded-lg bg-bg-primary/50 col-span-1 sm:col-span-2">
                       <span className="text-text-muted">Tx Hash</span>
                       <p className="font-mono text-text-primary mt-0.5">{result.tx.tx_hash}</p>
                     </div>
@@ -284,8 +369,8 @@ export default function AgentConsole() {
 
         {/* Right: Policy Pipeline */}
         <div className="lg:col-span-2">
-          <div className="glass-card rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-text-primary mb-4">
+          <div className="glass-card rounded-xl p-4 lg:p-5">
+            <h3 className="text-sm font-semibold text-text-primary mb-4 font-display italic">
               Policy Engine Pipeline
             </h3>
             <div className="space-y-3">
@@ -302,11 +387,11 @@ export default function AgentConsole() {
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
                         step.status === 'success'
-                          ? 'bg-accent-green/20 text-accent-green'
+                          ? 'bg-accent-patina/20 text-accent-patina'
                           : step.status === 'running'
-                          ? 'bg-accent-blue/20 text-accent-blue animate-pulse'
+                          ? 'bg-accent-slate/20 text-accent-slate animate-pulse'
                           : step.status === 'error'
-                          ? 'bg-accent-red/20 text-accent-red'
+                          ? 'bg-accent-coral/20 text-accent-coral'
                           : 'bg-bg-hover text-text-muted'
                       }`}
                     >
@@ -320,15 +405,15 @@ export default function AgentConsole() {
                         i + 1
                       )}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p
-                        className={`text-xs font-medium ${
+                        className={`text-xs font-medium truncate ${
                           step.status === 'success'
-                            ? 'text-accent-green'
+                            ? 'text-accent-patina'
                             : step.status === 'running'
-                            ? 'text-accent-blue'
+                            ? 'text-accent-slate'
                             : step.status === 'error'
-                            ? 'text-accent-red'
+                            ? 'text-accent-coral'
                             : 'text-text-secondary'
                         }`}
                       >
@@ -336,7 +421,7 @@ export default function AgentConsole() {
                       </p>
                     </div>
                     {step.status === 'running' && (
-                      <ArrowRight className="w-3.5 h-3.5 text-accent-blue animate-pulse" strokeWidth={1.5} />
+                      <ArrowRight className="w-3.5 h-3.5 text-accent-slate animate-pulse shrink-0" strokeWidth={1.5} />
                     )}
                   </div>
                   {i < arr.length - 1 && (
@@ -356,7 +441,7 @@ export default function AgentConsole() {
               </div>
               <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-accent-green rounded-full transition-all"
+                  className="h-full bg-accent-patina rounded-full transition-all"
                   style={{
                     width: `${Math.min(
                       ((card?.budget.spent || 0) / (card?.budget.monthly_max || 1)) * 100,
