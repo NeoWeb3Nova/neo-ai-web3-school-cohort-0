@@ -129,7 +129,11 @@
     "cardBudget": "Card Budget",
     "apiKey": "API Key",
     "timeWindow": "Time Window",
-    "cooldownPeriod": "Cooldown Period"
+    "cooldownPeriod": "Cooldown Period",
+    "selectVendors": "Select vendors this agent can pay",
+    "cooldownHours": "Cooldown (hours)",
+    "durationDays": "Duration (days)",
+    "days": "days"
   },
   "agent": {
     "title": "Agent Console",

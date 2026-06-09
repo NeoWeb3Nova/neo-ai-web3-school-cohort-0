@@ -129,7 +129,11 @@
     "cardBudget": "卡片预算",
     "apiKey": "API 密钥",
     "timeWindow": "时间窗口",
-    "cooldownPeriod": "冷却期"
+    "cooldownPeriod": "冷却期",
+    "selectVendors": "选择该智能体可以支付的供应商",
+    "cooldownHours": "冷却时间（小时）",
+    "durationDays": "有效期（天）",
+    "days": "天"
   },
   "agent": {
     "title": "智能体控制台",

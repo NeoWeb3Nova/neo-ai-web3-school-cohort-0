@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CreditCard,
@@ -15,39 +15,73 @@ import {
   Calendar,
   Shield,
   AlertCircle,
+  RefreshCw,
+  WifiOff,
 } from 'lucide-react';
-import { INITIAL_CARDS, type CardPact } from '../data/mockData';
+import { type CardPact, ALL_VENDORS } from '../data/mockData';
+import { cawApi } from '../api/caw';
 
 export default function Cards() {
   const { t } = useTranslation();
-  const [cards, setCards] = useState<CardPact[]>(INITIAL_CARDS);
+  const [cards, setCards] = useState<CardPact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [showNewCard, setShowNewCard] = useState(false);
   const [newCardName, setNewCardName] = useState('');
   const [newCardBudget, setNewCardBudget] = useState('200');
   const [newCardLimit, setNewCardLimit] = useState('50');
+  const [newCardCooldown, setNewCardCooldown] = useState('12');
+  const [newCardDuration, setNewCardDuration] = useState('30');
+  const [selectedVendors, setSelectedVendors] = useState<Set<string>>(new Set(['OpenAI', 'Midjourney']));
   const [newCardTouched, setNewCardTouched] = useState<Record<string, boolean>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const loadCards = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await cawApi.listCards();
+      setCards(data);
+      setOffline(false);
+    } catch (e) {
+      setOffline(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
 
   const toggleExpand = (cardId: string) => {
     setExpandedCard(expandedCard === cardId ? null : cardId);
   };
 
-  const handleApprove = (cardId: string) => {
-    setCards((prev) =>
-      prev.map((c) =>
-        c.card_id === cardId
-          ? { ...c, status: 'ACTIVE', api_key: `caw_sk_${Math.random().toString(36).slice(2, 14)}` }
-          : c
-      )
-    );
+  const handleApprove = async (cardId: string) => {
+    setActionLoading(cardId);
+    try {
+      await cawApi.approveCard(cardId);
+      await loadCards();
+    } catch {
+      alert(t('common.error'));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const handleRevoke = (cardId: string) => {
-    setCards((prev) =>
-      prev.map((c) => (c.card_id === cardId ? { ...c, status: 'REVOKED', api_key: '' } : c))
-    );
-    setConfirmRevoke(null);
+  const handleRevoke = async (cardId: string) => {
+    setActionLoading(cardId);
+    try {
+      await cawApi.revokeCard(cardId);
+      await loadCards();
+    } catch {
+      alert(t('common.error'));
+    } finally {
+      setActionLoading(null);
+      setConfirmRevoke(null);
+    }
   };
 
   const newCardErrors = (() => {
@@ -64,6 +98,7 @@ export default function Cards() {
         errs.limit = t('cards.limitExceedsBudget');
       }
     }
+    if (selectedVendors.size === 0) errs.vendors = t('cards.vendorWhitelist');
     return errs;
   })();
 
@@ -71,44 +106,37 @@ export default function Cards() {
     newCardName.trim().length > 0 &&
     parseFloat(newCardBudget) > 0 &&
     parseFloat(newCardLimit) > 0 &&
-    parseFloat(newCardLimit) <= parseFloat(newCardBudget);
+    parseFloat(newCardLimit) <= parseFloat(newCardBudget) &&
+    selectedVendors.size > 0;
 
-  const handleCreateCard = () => {
+  const handleCreateCard = async () => {
     setNewCardTouched({ name: true, budget: true, limit: true });
     if (!isNewCardValid) return;
-    const card: CardPact = {
-      card_id: `card-${Math.random().toString(36).slice(2, 8)}`,
-      agent_id: `agent-${newCardName.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).slice(2, 6)}`,
-      agent_name: newCardName.trim(),
-      owner: '0xOPCBossNe0001',
-      status: 'PENDING_APPROVAL',
-      budget: {
-        currency: 'USDC',
-        monthly_max: parseFloat(newCardBudget),
-        spent: 0,
+    setActionLoading('create');
+    try {
+      const vendorWhitelist = ALL_VENDORS.filter((v) => selectedVendors.has(v.name));
+      await cawApi.createCard({
+        agent_name: newCardName.trim(),
+        monthly_budget: parseFloat(newCardBudget),
         single_tx_limit: parseFloat(newCardLimit),
-      },
-      vendor_whitelist: [
-        { name: 'OpenAI', address: '0xOpenAI...', category: 'api' },
-        { name: 'Midjourney', address: '0xMidjourney...', category: 'api' },
-      ],
-      cooldown_hours: 12,
-      time_window: {
-        start: new Date().toISOString(),
-        end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        allowed_hours_start: '00:00',
-        allowed_hours_end: '23:59',
-      },
-      created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      api_key: '',
-    };
-    setCards((prev) => [...prev, card]);
-    setShowNewCard(false);
-    setNewCardName('');
-    setNewCardBudget('200');
-    setNewCardLimit('50');
-    setNewCardTouched({});
+        vendor_whitelist: vendorWhitelist,
+        cooldown_hours: parseInt(newCardCooldown, 10) || 12,
+        duration_days: parseInt(newCardDuration, 10) || 30,
+      });
+      await loadCards();
+      setShowNewCard(false);
+      setNewCardName('');
+      setNewCardBudget('200');
+      setNewCardLimit('50');
+      setNewCardCooldown('12');
+      setNewCardDuration('30');
+      setSelectedVendors(new Set(['OpenAI', 'Midjourney']));
+      setNewCardTouched({});
+    } catch {
+      alert(t('common.error'));
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const statusConfig: Record<string, { color: string; bg: string; icon: React.ReactNode; label: string }> = {
@@ -143,6 +171,21 @@ export default function Cards() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* Offline banner */}
+      {offline && (
+        <div className="flex items-center gap-2 p-3 rounded-im bg-accent-amber/10 border border-accent-amber/20 text-accent-amber text-sm">
+          <WifiOff className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+          <span>{t('common.offline')}</span>
+          <button
+            onClick={loadCards}
+            className="ml-auto flex items-center gap-1 text-xs hover:underline"
+          >
+            <RefreshCw className="w-3 h-3" strokeWidth={1.5} />
+            {t('common.retry')}
+          </button>
+        </div>
+      )}
+
       {/* Header Action */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -164,7 +207,7 @@ export default function Cards() {
       {showNewCard && (
         <div className="glass-card rounded-im p-4 lg:p-5 border-accent-patina/30 animate-fade-in">
           <h3 className="text-sm font-semibold text-text-primary mb-4 font-display">{t('cards.issueCardTitle')}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="text-xs text-text-secondary mb-1.5 block">{t('cards.agentName')}</label>
               <input
@@ -230,13 +273,77 @@ export default function Cards() {
                 </p>
               )}
             </div>
+            <div>
+              <label className="text-xs text-text-secondary mb-1.5 block">{t('cards.cooldownHours')}</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={newCardCooldown}
+                onChange={(e) => setNewCardCooldown(e.target.value)}
+                className="w-full px-3 py-2 rounded-im text-sm input-kinpaku"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-text-secondary mb-1.5 block">{t('cards.durationDays')}</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={newCardDuration}
+                onChange={(e) => setNewCardDuration(e.target.value)}
+                className="w-full px-3 py-2 rounded-im text-sm input-kinpaku"
+              />
+            </div>
           </div>
+
+          {/* Vendor whitelist */}
+          <div className="mt-4">
+            <label className="text-xs text-text-secondary mb-2 block">{t('cards.selectVendors')}</label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_VENDORS.map((v) => {
+                const checked = selectedVendors.has(v.name);
+                return (
+                  <label
+                    key={v.name}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-im text-xs font-medium border cursor-pointer transition-colors ${
+                      checked
+                        ? 'bg-accent-patina/10 border-accent-patina/40 text-accent-patina'
+                        : 'bg-bg-primary border-border-default text-text-secondary hover:border-border-hover'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="hidden"
+                      checked={checked}
+                      onChange={() => {
+                        const next = new Set(selectedVendors);
+                        if (next.has(v.name)) next.delete(v.name);
+                        else next.add(v.name);
+                        setSelectedVendors(next);
+                      }}
+                    />
+                    <Shield className="w-3 h-3" strokeWidth={1.5} />
+                    {v.name}
+                  </label>
+                );
+              })}
+            </div>
+            {newCardErrors.vendors && (
+              <p className="mt-1.5 text-[11px] text-accent-coral flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" strokeWidth={2} />
+                {newCardErrors.vendors}
+              </p>
+            )}
+          </div>
+
           <div className="flex items-center gap-3 mt-4">
             <button
               onClick={handleCreateCard}
-              className="px-4 py-2 rounded-im text-sm btn-gold"
+              disabled={actionLoading === 'create'}
+              className="px-4 py-2 rounded-im text-sm btn-gold disabled:opacity-50"
             >
-              {t('cards.createCard')}
+              {actionLoading === 'create' ? t('common.processing') : t('cards.createCard')}
             </button>
             <button
               onClick={() => {
@@ -278,7 +385,8 @@ export default function Cards() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => handleRevoke(confirmRevoke)}
-                className="flex-1 px-4 py-2 bg-accent-coral text-white rounded-im text-sm font-semibold hover:bg-accent-coral/90 transition-colors"
+                disabled={!!actionLoading}
+                className="flex-1 px-4 py-2 bg-accent-coral text-white rounded-im text-sm font-semibold hover:bg-accent-coral/90 transition-colors disabled:opacity-50"
               >
                 {t('cards.revokeCard')}
               </button>
@@ -293,7 +401,14 @@ export default function Cards() {
         </div>
       )}
 
-      {cards.length === 0 && !showNewCard && (
+      {loading && (
+        <div className="glass-card rounded-im p-8 text-center">
+          <RefreshCw className="w-6 h-6 text-accent-patina animate-spin mx-auto mb-3" strokeWidth={1.5} />
+          <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+        </div>
+      )}
+
+      {!loading && cards.length === 0 && !showNewCard && (
         <div className="glass-card rounded-im p-8 text-center">
           <div className="w-12 h-12 rounded-im bg-accent-patina/10 flex items-center justify-center mx-auto mb-4">
             <CreditCard className="w-6 h-6 text-accent-patina" strokeWidth={1.5} />
@@ -473,10 +588,11 @@ export default function Cards() {
                           e.stopPropagation();
                           handleApprove(card.card_id);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-patina/10 text-accent-patina rounded-im text-xs font-semibold hover:bg-accent-patina/20 border border-accent-patina/30 transition-colors"
+                        disabled={actionLoading === card.card_id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-patina/10 text-accent-patina rounded-im text-xs font-semibold hover:bg-accent-patina/20 border border-accent-patina/30 transition-colors disabled:opacity-50"
                       >
                         <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
-                        {t('cards.approve')}
+                        {actionLoading === card.card_id ? t('common.processing') : t('cards.approve')}
                       </button>
                     )}
                     {card.status === 'ACTIVE' && (
@@ -485,7 +601,8 @@ export default function Cards() {
                           e.stopPropagation();
                           setConfirmRevoke(card.card_id);
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-coral/10 text-accent-coral rounded-im text-xs font-semibold hover:bg-accent-coral/20 border border-accent-coral/30 transition-colors"
+                        disabled={!!actionLoading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-coral/10 text-accent-coral rounded-im text-xs font-semibold hover:bg-accent-coral/20 border border-accent-coral/30 transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
                         {t('cards.revokeCard')}

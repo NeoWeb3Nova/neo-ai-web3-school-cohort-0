@@ -88,6 +88,18 @@ export const VENDOR_REGISTRY: Record<string, string> = {
   Vercel: '0xVercel00000000000000000000000000000009',
 };
 
+export const ALL_VENDORS: Vendor[] = [
+  { name: 'OpenAI', address: VENDOR_REGISTRY['OpenAI'], category: 'api' },
+  { name: 'Midjourney', address: VENDOR_REGISTRY['Midjourney'], category: 'api' },
+  { name: 'Unsplash', address: VENDOR_REGISTRY['Unsplash'], category: 'api' },
+  { name: 'Google Ads', address: VENDOR_REGISTRY['Google Ads'], category: 'ads' },
+  { name: 'Twitter Ads', address: VENDOR_REGISTRY['Twitter Ads'], category: 'ads' },
+  { name: 'Designer PH', address: VENDOR_REGISTRY['Designer PH'], category: 'outsource' },
+  { name: 'Translator VN', address: VENDOR_REGISTRY['Translator VN'], category: 'outsource' },
+  { name: 'AWS', address: VENDOR_REGISTRY['AWS'], category: 'infra' },
+  { name: 'Vercel', address: VENDOR_REGISTRY['Vercel'], category: 'infra' },
+];
+
 export const INITIAL_CARDS: CardPact[] = [
   {
     card_id: 'card-a1b2c3d4',

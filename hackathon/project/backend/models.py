@@ -30,12 +30,17 @@ class CreateCardRequest(BaseModel):
 
 class CardResponse(BaseModel):
     card_id: str
+    agent_id: str
     agent_name: str
+    owner: str
     status: str
     budget: Dict[str, Any]
     vendor_whitelist: List[Dict[str, str]]
+    cooldown_hours: int
+    time_window: Optional[Dict[str, Any]] = None
     created_at: str
     expires_at: str
+    api_key: Optional[str] = None
 
 
 class ApproveResponse(BaseModel):
