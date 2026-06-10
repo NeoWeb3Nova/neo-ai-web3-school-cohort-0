@@ -2,7 +2,7 @@
 Pydantic models for OPC Agent Treasury Backend API.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Dict, Any
 
 
@@ -41,6 +41,12 @@ class CardResponse(BaseModel):
     created_at: str
     expires_at: str
     api_key: Optional[str] = None
+
+    @field_validator("created_at", "expires_at", mode="before")
+    @classmethod
+    def none_datetime_to_empty_string(cls, value: Any) -> str:
+        """CAW may return null for optional Pact timestamps; keep frontend contract as string."""
+        return "" if value is None else str(value)
 
 
 class ApproveResponse(BaseModel):

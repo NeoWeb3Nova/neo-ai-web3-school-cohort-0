@@ -849,8 +849,8 @@ class RealCAWClient:
             },
             "vendor_whitelist": vendor_whitelist,
             "cooldown_hours": 12,
-            "created_at": pact.get("created_at", datetime.now(timezone.utc).isoformat()),
-            "expires_at": pact.get("expires_at", ""),
+            "created_at": pact.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "expires_at": pact.get("expires_at") or "",
             "api_key": "",
         }
 
