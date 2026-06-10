@@ -504,9 +504,26 @@ export default function Cards() {
                     </p>
                   </div>
                 </div>
+                {/* Selected Vendors Preview */}
+                {card.vendor_whitelist.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {card.vendor_whitelist.slice(0, 3).map((v) => (
+                      <span
+                        key={`${card.card_id}-${v.address || v.name}`}
+                        className="px-2 py-0.5 rounded-md bg-accent-slate/10 text-accent-slate text-[10px] border border-accent-slate/20"
+                      >
+                        {v.name}
+                        {v.x402_url && <span className="ml-1 text-accent-gold">x402</span>}
+                      </span>
+                    ))}
+                    {card.vendor_whitelist.length > 3 && (
+                      <span className="px-2 py-0.5 rounded-md bg-bg-primary text-text-muted text-[10px] border border-border-default">
+                        +{card.vendor_whitelist.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
-
-              {/* Expanded Detail */}
               {isExpanded && (
                 <div className="border-t border-border-default p-4 lg:p-5 animate-fade-in space-y-4">
                   {/* Vendor Whitelist */}

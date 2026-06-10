@@ -177,6 +177,83 @@ def test_real_caw_list_cards_prefers_sync_http_and_avoids_sdk_loop():
     assert cards[0]["budget"]["monthly_max"] == 100.0
 
 
+def test_real_caw_list_cards_preserves_local_x402_vendor_metadata_after_api_refresh():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._owner = "OPC Owner"
+    client._cards = {
+        "pact-http-1": {
+            "card_id": "pact-http-1",
+            "agent_name": "Research Agent",
+            "agent_id": "agent-research",
+            "owner": "OPC Owner",
+            "status": "PENDING_APPROVAL",
+            "budget": {"currency": "USDC", "monthly_max": 200.0, "spent": 0.0, "single_tx_limit": 50.0},
+            "vendor_whitelist": [
+                {
+                    "name": "BlockRun AI Gateway",
+                    "address": "0x4020000000000000000000000000000000000001",
+                    "category": "ai",
+                    "x402_url": "https://blockrun.ai",
+                    "erc8004_agent_id": "base:blockrun-ai-gateway",
+                }
+            ],
+            "cooldown_hours": 6,
+            "created_at": "2026-06-10T00:00:00+00:00",
+            "expires_at": "2026-07-10T00:00:00+00:00",
+            "api_key": "",
+            "x402_enabled": True,
+            "x402_url": "https://blockrun.ai",
+            "erc8004_agent_id": "base:blockrun-ai-gateway",
+            "erc8004_registry_url": "https://8004scan.io/agents?search=BlockRun",
+        }
+    }
+
+    class LoopPoisonedSDK:
+        def list_pacts(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("SDK list_pacts should not be called when HTTP succeeds")
+
+    client._client = LoopPoisonedSDK()
+
+    def fake_http_get_json(path, params):
+        return {
+            "result": {
+                "pacts": [
+                    {
+                        "pact_id": "pact-http-1",
+                        "intent": "Issue spending card for Research Agent",
+                        "status": "APPROVED",
+                        "spec": {
+                            "policies": [
+                                {
+                                    "rules": {
+                                        "deny_if": {"amount_usd_gt": "0", "usage_limits": {"rolling_30d": {"amount_usd_gt": "0"}}},
+                                        "when": {
+                                            "destination_address_in": [
+                                                {"chain_id": "BASE_ETH", "address": "0x4020000000000000000000000000000000000001"}
+                                            ]
+                                        },
+                                    }
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        }
+
+    client._http_get_json = fake_http_get_json
+
+    cards = client.list_cards()
+
+    assert cards[0]["status"] == "ACTIVE"
+    assert cards[0]["agent_name"] == "Research Agent"
+    assert cards[0]["vendor_whitelist"][0]["name"] == "BlockRun AI Gateway"
+    assert cards[0]["x402_url"] == "https://blockrun.ai"
+    assert cards[0]["erc8004_agent_id"] == "base:blockrun-ai-gateway"
+    assert cards[0]["budget"]["monthly_max"] == 200.0
+
+
 def test_extract_list_items_accepts_caw_list_shapes():
     assert RealCAWClient._extract_list_items([{"id": "a"}, "bad"], "pacts") == [{"id": "a"}]
     assert RealCAWClient._extract_list_items({"pacts": [{"id": "b"}]}, "pacts") == [{"id": "b"}]

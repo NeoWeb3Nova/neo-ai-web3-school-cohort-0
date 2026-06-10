@@ -376,7 +376,7 @@ class RealCAWClient:
             for p in pacts:
                 pid = p.get("pact_id") or p.get("id")
                 if pid:
-                    self._cards[pid] = self._pact_to_card_dict(p)
+                    self._cards[pid] = self._merge_api_card_with_local(pid, self._pact_to_card_dict(p))
         except Exception as exc:
             logger.warning("[CAW] HTTP list_pacts failed (%s), falling back to SDK", exc)
             try:
@@ -775,8 +775,62 @@ class RealCAWClient:
     # ───────────────────────────────────────────
     # Internal Helpers
     # ───────────────────────────────────────────
+    def _merge_api_card_with_local(self, card_id: str, api_card: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge CAW API Pact data without losing local x402/vendor metadata.
+
+        CAW list_pacts is the authority for lifecycle status, but it often returns
+        policy destinations as bare addresses and may omit the exact provider names
+        and x402/ERC-8004 fields selected in the UI at creation time. Preserve those
+        local fields for newly-created cards so the Cards and Agent Console pages can
+        show the selected suppliers after a refresh.
+        """
+        local = self._cards.get(card_id)
+        if not local:
+            return api_card
+
+        merged = {**api_card}
+        for key in (
+            "agent_name",
+            "agent_id",
+            "budget",
+            "vendor_whitelist",
+            "cooldown_hours",
+            "x402_enabled",
+            "x402_url",
+            "erc8004_agent_id",
+            "erc8004_registry_url",
+        ):
+            local_value = local.get(key)
+            api_value = merged.get(key)
+            if key == "vendor_whitelist":
+                if local_value and not api_value:
+                    merged[key] = local_value
+                elif local_value and api_value:
+                    local_names = {str(v.get("name")) for v in local_value if isinstance(v, dict)}
+                    api_names = {str(v.get("name")) for v in api_value if isinstance(v, dict)}
+                    # CAW-derived names are usually truncated addresses; keep the UI-selected providers.
+                    if local_names and all(name.endswith("...") for name in api_names if name):
+                        merged[key] = local_value
+                continue
+            if key in ("agent_name", "agent_id") and local_value not in (None, ""):
+                merged[key] = local_value
+                continue
+            if local_value not in (None, "", [], {}) and api_value in (None, "", [], {}, 0, 0.0):
+                merged[key] = local_value
+
+        local_budget = local.get("budget") or {}
+        api_budget = merged.get("budget") or {}
+        if isinstance(local_budget, dict) and isinstance(api_budget, dict):
+            merged["budget"] = {
+                **api_budget,
+                "monthly_max": api_budget.get("monthly_max") or local_budget.get("monthly_max", 0.0),
+                "single_tx_limit": api_budget.get("single_tx_limit") or local_budget.get("single_tx_limit", 0.0),
+                "currency": api_budget.get("currency") or local_budget.get("currency", "USDC"),
+            }
+        return merged
 
     def _get_card_or_raise(self, card_id: str) -> Dict[str, Any]:
+
         if card_id not in self._cards:
             # 尝试从 API 刷新
             try:
