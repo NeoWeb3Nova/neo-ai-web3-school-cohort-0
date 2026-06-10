@@ -266,7 +266,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="h-[220px] lg:h-[260px] min-w-0">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 640, height: 260 }}>
               <BarChart
                 data={spendingByAgent}
                 margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
@@ -328,7 +328,7 @@ export default function Dashboard() {
             <Activity className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
           </div>
           <div className="h-[160px] lg:h-[180px] min-w-0 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 180 }}>
               <PieChart>
                 <Pie
                   data={budgetDistribution}
