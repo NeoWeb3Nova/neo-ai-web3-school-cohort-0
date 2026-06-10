@@ -113,6 +113,7 @@ export default function Dashboard() {
 
   const budgetDistribution = useMemo(() => {
     return cards.map((c) => ({
+      id: c.card_id,
       name: c.agent_name,
       value: c.budget.monthly_max,
       spent: c.budget.spent,
@@ -257,14 +258,14 @@ export default function Dashboard() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4 items-stretch">
         {/* Spending by Agent */}
-        <div className="glass-card rounded-im p-4 lg:p-5 lg:col-span-2 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-im p-4 lg:p-5 lg:col-span-2 flex flex-col min-w-0 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.spendingByAgent')}</h3>
               <p className="text-xs text-text-muted mt-0.5">{t('dashboard.approvedOnly')}</p>
             </div>
           </div>
-          <div className="flex-1 min-h-[220px] lg:min-h-[260px]">
+          <div className="h-[220px] lg:h-[260px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={spendingByAgent}
@@ -318,7 +319,7 @@ export default function Dashboard() {
         </div>
 
         {/* Budget Distribution */}
-        <div className="glass-card rounded-im p-4 lg:p-5 flex flex-col transition-all duration-200 hover:border-border-hover">
+        <div className="glass-card rounded-im p-4 lg:p-5 flex flex-col min-w-0 transition-all duration-200 hover:border-border-hover">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-semibold text-text-primary font-display">{t('dashboard.budgetDistribution')}</h3>
@@ -326,7 +327,7 @@ export default function Dashboard() {
             </div>
             <Activity className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
           </div>
-          <div className="flex-1 min-h-[160px] lg:min-h-[180px] flex items-center justify-center">
+          <div className="h-[160px] lg:h-[180px] min-w-0 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -371,7 +372,7 @@ export default function Dashboard() {
             {budgetDistribution.map((card, i) => {
               const pct = card.value > 0 ? ((card.spent / card.value) * 100).toFixed(0) : '0';
               return (
-                <div key={card.name} className="flex items-center justify-between">
+                <div key={card.id} className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div
                       className="w-2.5 h-2.5 rounded-full shrink-0"
