@@ -49,7 +49,7 @@ export default function AgentConsole() {
   const [selectedCard, setSelectedCard] = useState(searchParams.get('card_id') || '');
   const [vendor, setVendor] = useState('');
   const [amount, setAmount] = useState('10');
-  const [purpose, setPurpose] = useState('GPT-4 API tokens');
+  const [purpose, setPurpose] = useState('x402 pay-per-call request');
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -262,6 +262,12 @@ export default function AgentConsole() {
           <p className="text-sm text-text-secondary truncate">
             {t('agent.subtitle')}
           </p>
+          {(card.x402_url || card.erc8004_agent_id) && (
+            <p className="text-xs text-text-muted truncate mt-1">
+              {card.x402_url ? `x402: ${card.x402_url}` : 'x402 enabled'}
+              {card.erc8004_agent_id ? ` · ERC-8004: ${card.erc8004_agent_id}` : ''}
+            </p>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-2 shrink-0">
           <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cardStatus.bg} ${cardStatus.color}`}>

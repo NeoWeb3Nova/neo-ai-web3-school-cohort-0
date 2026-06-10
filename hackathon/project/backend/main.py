@@ -45,6 +45,14 @@ from models import (
     AttackRequest,
     AttackResponse,
     WalletBalanceResponse,
+    X402Provider,
+    ERC8004Agent,
+    MarketplaceContextResponse,
+)
+from service_registry import (
+    get_marketplace_context,
+    list_erc8004_agents,
+    list_x402_providers,
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -136,8 +144,27 @@ def config():
     )
 
 
+@app.get("/providers/x402", response_model=List[X402Provider])
+def x402_providers():
+    """Curated real x402 service providers from x402scan resources."""
+    return [X402Provider(**p) for p in list_x402_providers()]
+
+
+@app.get("/erc8004/agents", response_model=List[ERC8004Agent])
+def erc8004_agents():
+    """Recent ERC-8004 agent examples from 8004scan for demo discovery."""
+    return [ERC8004Agent(**a) for a in list_erc8004_agents()]
+
+
+@app.get("/marketplace/context", response_model=MarketplaceContextResponse)
+def marketplace_context():
+    """Snapshot explaining why x402 + ERC-8004 are the right integration targets."""
+    return MarketplaceContextResponse(**get_marketplace_context())
+
+
 @app.get("/wallet/balance", response_model=WalletBalanceResponse)
 def wallet_balance():
+
     """Return the real wallet balance from CAW."""
     try:
         result = _caw().get_wallet_balance()

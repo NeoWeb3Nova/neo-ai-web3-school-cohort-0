@@ -35,7 +35,8 @@ export default function Cards() {
   const [newCardLimit, setNewCardLimit] = useState('50');
   const [newCardCooldown, setNewCardCooldown] = useState('12');
   const [newCardDuration, setNewCardDuration] = useState('30');
-  const [selectedVendors, setSelectedVendors] = useState<Set<string>>(new Set(['OpenAI', 'Midjourney']));
+  const [selectedVendors, setSelectedVendors] = useState<Set<string>>(new Set(['BlockRun AI Gateway', 'StableEnrich']));
+  const [availableVendors, setAvailableVendors] = useState(ALL_VENDORS);
   const [newCardTouched, setNewCardTouched] = useState<Record<string, boolean>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -43,8 +44,14 @@ export default function Cards() {
   const loadCards = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await cawApi.listCards();
+      const [data, providers] = await Promise.all([
+        cawApi.listCards(),
+        cawApi.listX402Providers().catch(() => []),
+      ]);
       setCards(data);
+      if (providers.length > 0) {
+        setAvailableVendors(providers);
+      }
       setOffline(false);
     } catch {
       setOffline(true);
@@ -116,7 +123,7 @@ export default function Cards() {
     if (!isNewCardValid) return;
     setActionLoading('create');
     try {
-      const vendorWhitelist = ALL_VENDORS.filter((v) => selectedVendors.has(v.name));
+      const vendorWhitelist = availableVendors.filter((v) => selectedVendors.has(v.name));
       await cawApi.createCard({
         agent_name: newCardName.trim(),
         monthly_budget: parseFloat(newCardBudget),
@@ -132,7 +139,7 @@ export default function Cards() {
       setNewCardLimit('50');
       setNewCardCooldown('12');
       setNewCardDuration('30');
-      setSelectedVendors(new Set(['OpenAI', 'Midjourney']));
+      setSelectedVendors(new Set(['BlockRun AI Gateway', 'StableEnrich']));
       setNewCardTouched({});
     } catch {
       alert(t('common.error'));
@@ -276,7 +283,7 @@ export default function Cards() {
           <div className="mt-4">
             <label className="text-xs text-text-secondary mb-2 block">{t('cards.selectVendors')}</label>
             <div className="flex flex-wrap gap-2">
-              {ALL_VENDORS.map((v) => {
+              {availableVendors.map((v) => {
                 const checked = selectedVendors.has(v.name);
                 return (
                   <label
@@ -300,6 +307,7 @@ export default function Cards() {
                     />
                     <Shield className="w-3 h-3" strokeWidth={1.5} />
                     {v.name}
+                    {v.x402_url && <span className="text-[10px] opacity-70">x402</span>}
                   </label>
                 );
               })}
@@ -514,6 +522,7 @@ export default function Cards() {
                           className="px-2.5 py-1 rounded-md bg-accent-slate/10 text-accent-slate text-xs font-medium border border-accent-slate/20"
                         >
                           {v.name}
+                          {v.x402_url && <span className="ml-1 text-[10px] text-accent-gold">x402</span>}
                         </span>
                       ))}
                     </div>

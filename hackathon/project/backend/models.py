@@ -23,7 +23,7 @@ class CreateCardRequest(BaseModel):
     agent_name: str
     monthly_budget: float = Field(..., gt=0)
     single_tx_limit: float = Field(..., gt=0)
-    vendor_whitelist: List[Dict[str, str]]
+    vendor_whitelist: List[Dict[str, Any]]
     cooldown_hours: int = 12
     duration_days: int = 30
 
@@ -35,12 +35,16 @@ class CardResponse(BaseModel):
     owner: str
     status: str
     budget: Dict[str, Any]
-    vendor_whitelist: List[Dict[str, str]]
+    vendor_whitelist: List[Dict[str, Any]]
     cooldown_hours: int
     time_window: Optional[Dict[str, Any]] = None
     created_at: str
     expires_at: str
     api_key: Optional[str] = None
+    x402_enabled: bool = True
+    x402_url: Optional[str] = None
+    erc8004_agent_id: Optional[str] = None
+    erc8004_registry_url: Optional[str] = None
 
     @field_validator("created_at", "expires_at", mode="before")
     @classmethod
@@ -155,3 +159,35 @@ class WalletBalanceResponse(BaseModel):
     address: str = ""
     updated_at: str
     balances: List[WalletBalanceAsset] = []
+
+
+class X402Provider(BaseModel):
+    name: str
+    address: str
+    category: str
+    x402_url: str
+    description: str
+    pricing_usdc: float
+    chain: str
+    source: str
+    erc8004_agent_id: Optional[str] = None
+    erc8004_registry_url: Optional[str] = None
+
+
+class ERC8004Agent(BaseModel):
+    agent_id: str
+    name: str
+    chain: str
+    service: str
+    owner: str
+    score: int
+    feedback: int
+    stars: int
+    x402_enabled: bool
+    registry_url: str
+    source: str
+
+
+class MarketplaceContextResponse(BaseModel):
+    x402scan: Dict[str, Any]
+    erc8004: Dict[str, Any]

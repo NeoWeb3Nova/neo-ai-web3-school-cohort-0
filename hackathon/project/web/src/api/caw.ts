@@ -22,7 +22,7 @@ export type CreateCardPayload = {
   agent_name: string;
   monthly_budget: number;
   single_tx_limit: number;
-  vendor_whitelist: Array<{ name: string; address: string; category: string }>;
+  vendor_whitelist: Array<Record<string, any>>;
   cooldown_hours?: number;
   duration_days?: number;
 };
@@ -52,8 +52,38 @@ export type PaymentResponse = {
   alert_level: string;
 };
 
+export type X402Provider = {
+  name: string;
+  address: string;
+  category: string;
+  x402_url: string;
+  description: string;
+  pricing_usdc: number;
+  chain: string;
+  source: string;
+  erc8004_agent_id?: string | null;
+  erc8004_registry_url?: string | null;
+};
+
+export type ERC8004Agent = {
+  agent_id: string;
+  name: string;
+  chain: string;
+  service: string;
+  owner: string;
+  score: number;
+  feedback: number;
+  stars: number;
+  x402_enabled: boolean;
+  registry_url: string;
+  source: string;
+};
+
 export const cawApi = {
   health: () => api<{ status: string; caw_mode: string }>('/health'),
+  listX402Providers: () => api<X402Provider[]>('/providers/x402'),
+  listERC8004Agents: () => api<ERC8004Agent[]>('/erc8004/agents'),
+  marketplaceContext: () => api<Record<string, any>>('/marketplace/context'),
 
   listCards: () => api<CardPact[]>('/cards'),
   getCard: (cardId: string) => api<CardPact>(`/cards/${cardId}`),

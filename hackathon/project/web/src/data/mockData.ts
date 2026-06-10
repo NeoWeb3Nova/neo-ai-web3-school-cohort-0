@@ -4,7 +4,14 @@
 export interface Vendor {
   name: string;
   address: string;
-  category: 'api' | 'ads' | 'outsource' | 'infra';
+  category: string;
+  x402_url?: string;
+  description?: string;
+  pricing_usdc?: number;
+  chain?: string;
+  source?: string;
+  erc8004_agent_id?: string | null;
+  erc8004_registry_url?: string | null;
 }
 
 export interface Budget {
@@ -35,6 +42,10 @@ export interface CardPact {
   created_at: string;
   expires_at: string;
   api_key: string;
+  x402_enabled?: boolean;
+  x402_url?: string | null;
+  erc8004_agent_id?: string | null;
+  erc8004_registry_url?: string | null;
 }
 
 export interface Transaction {
@@ -78,6 +89,14 @@ export interface MonthlySummary {
 }
 
 export const VENDOR_REGISTRY: Record<string, string> = {
+  'BlockRun AI Gateway': '0x4020000000000000000000000000000000000001',
+  'claw402 API Gateway': '0x4020000000000000000000000000000000000002',
+  Vishwa: '0x4020000000000000000000000000000000000003',
+  'ATXP Agent Account': '0x4020000000000000000000000000000000000004',
+  StableEnrich: '0x4020000000000000000000000000000000000005',
+  'twit.sh': '0x4020000000000000000000000000000000000006',
+  'OneSource Ethereum RPC': '0x4020000000000000000000000000000000000007',
+  'Orbis API Marketplace': '0x4020000000000000000000000000000000000008',
   OpenAI: '0xOpenAI0000000000000000000000000000000001',
   Midjourney: '0xMidjourney0000000000000000000000000002',
   Unsplash: '0xUnsplash00000000000000000000000000003',
@@ -90,6 +109,42 @@ export const VENDOR_REGISTRY: Record<string, string> = {
 };
 
 export const ALL_VENDORS: Vendor[] = [
+  {
+    name: 'BlockRun AI Gateway',
+    address: VENDOR_REGISTRY['BlockRun AI Gateway'],
+    category: 'ai',
+    x402_url: 'https://blockrun.ai',
+    description: 'Pay-per-call AI gateway settled in USDC.',
+    pricing_usdc: 0.05,
+    chain: 'Base',
+    source: 'x402scan:most-used',
+    erc8004_agent_id: 'base:blockrun-ai-gateway',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=BlockRun',
+  },
+  {
+    name: 'StableEnrich',
+    address: VENDOR_REGISTRY.StableEnrich,
+    category: 'search',
+    x402_url: 'https://stableenrich.dev',
+    description: 'Pay-per-request enrichment/search APIs.',
+    pricing_usdc: 0.03,
+    chain: 'Base',
+    source: 'x402scan:most-used',
+    erc8004_agent_id: 'base:stableenrich',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=StableEnrich',
+  },
+  {
+    name: 'OneSource Ethereum RPC',
+    address: VENDOR_REGISTRY['OneSource Ethereum RPC'],
+    category: 'crypto',
+    x402_url: 'https://skills.onesource.io',
+    description: 'Ethereum RPC and onchain data for agents.',
+    pricing_usdc: 0.01,
+    chain: 'Ethereum',
+    source: 'x402scan:most-used',
+    erc8004_agent_id: 'ethereum:onesource-rpc',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=OneSource',
+  },
   { name: 'OpenAI', address: VENDOR_REGISTRY['OpenAI'], category: 'api' },
   { name: 'Midjourney', address: VENDOR_REGISTRY['Midjourney'], category: 'api' },
   { name: 'Unsplash', address: VENDOR_REGISTRY['Unsplash'], category: 'api' },

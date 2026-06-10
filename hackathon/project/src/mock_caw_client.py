@@ -25,6 +25,8 @@ from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 
+from service_registry import get_vendor_registry, list_x402_providers
+
 
 # ═══════════════════════════════════════════════════════════════
 # Data Models
@@ -34,7 +36,14 @@ from typing import Optional, List, Dict, Any
 class Vendor:
     name: str
     address: str
-    category: str  # api, ads, outsource, infra
+    category: str  # ai, api, search, crypto, social, infra, ads, outsource
+    x402_url: str = ""
+    description: str = ""
+    pricing_usdc: float = 0.0
+    chain: str = "Base"
+    source: str = ""
+    erc8004_agent_id: str = ""
+    erc8004_registry_url: str = ""
 
 
 @dataclass
@@ -121,8 +130,10 @@ class MockCAWClient:
         self._owner = "0xOPCBossNe0001"
         self._a2a_transfers: List[A2ATransferRecord] = []
 
-        # 预置一些 mock vendor 地址
-        self._vendor_registry = {
+        # x402scan-grounded provider registry for agent-native pay-per-call services.
+        self._x402_providers = {p["name"]: p for p in list_x402_providers()}
+        self._vendor_registry = get_vendor_registry()
+        self._vendor_registry.update({
             "OpenAI": "0xOpenAI0000000000000000000000000000000001",
             "Midjourney": "0xMidjourney0000000000000000000000000002",
             "Unsplash": "0xUnsplash00000000000000000000000000003",
@@ -132,7 +143,7 @@ class MockCAWClient:
             "Translator VN": "0xTranslatorVN00000000000000000000000007",
             "AWS": "0xAWS00000000000000000000000000000000008",
             "Vercel": "0xVercel00000000000000000000000000000009",
-        }
+        })
 
     # ───────────────────────────────────────────
     # Identity & Pact Lifecycle
@@ -143,7 +154,7 @@ class MockCAWClient:
         agent_name: str,
         monthly_budget: float,
         single_tx_limit: float,
-        vendor_whitelist: List[Dict[str, str]],
+        vendor_whitelist: List[Dict[str, Any]],
         cooldown_hours: int = 12,
         owner: Optional[str] = None,
         duration_days: int = 30,
@@ -712,6 +723,10 @@ class MockCAWClient:
         })
 
     def _card_to_dict(self, card: CardPact) -> Dict[str, Any]:
+        primary_provider = next(
+            (self._x402_providers.get(v.name) for v in card.vendor_whitelist if v.name in self._x402_providers),
+            None,
+        )
         return {
             "card_id": card.card_id,
             "agent_id": card.agent_id,
@@ -725,6 +740,10 @@ class MockCAWClient:
             "created_at": card.created_at,
             "expires_at": card.expires_at,
             "api_key": card.api_key[:12] + "..." if card.api_key else "",
+            "x402_enabled": bool(primary_provider),
+            "x402_url": primary_provider.get("x402_url") if primary_provider else None,
+            "erc8004_agent_id": primary_provider.get("erc8004_agent_id") if primary_provider else None,
+            "erc8004_registry_url": primary_provider.get("erc8004_registry_url") if primary_provider else None,
         }
 
     def _tx_to_dict(self, tx: Transaction) -> Dict[str, Any]:

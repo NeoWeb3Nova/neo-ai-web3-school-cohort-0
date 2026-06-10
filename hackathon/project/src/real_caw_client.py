@@ -44,6 +44,8 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
+from service_registry import get_vendor_registry
+
 logger = logging.getLogger(__name__)
 
 # ── SDK 可用性检测 ──────────────────────────────────────────
@@ -80,9 +82,12 @@ def _default_token() -> str:
 
 
 def _vendor_address(vendor_name: str) -> str:
-    """从环境变量获取供应商真实链上地址；未配置时返回零地址。"""
-    key = f"VENDOR_{vendor_name.upper().replace(' ', '_')}_ADDR"
-    return os.getenv(key, "0x0000000000000000000000000000000000000000")
+    """从环境变量获取供应商真实链上地址；未配置时回退到 x402 demo registry。"""
+    key = f"VENDOR_{vendor_name.upper().replace(' ', '_').replace('.', '_')}_ADDR"
+    return os.getenv(
+        key,
+        get_vendor_registry().get(vendor_name, "0x0000000000000000000000000000000000000000"),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -144,7 +149,7 @@ class RealCAWClient:
         agent_name: str,
         monthly_budget: float,
         single_tx_limit: float,
-        vendor_whitelist: List[Dict[str, str]],
+        vendor_whitelist: List[Dict[str, Any]],
         cooldown_hours: int = 12,
         owner: Optional[str] = None,
         duration_days: int = 30,
@@ -264,6 +269,10 @@ class RealCAWClient:
             "created_at": now.isoformat(),
             "expires_at": expires.isoformat(),
             "api_key": "",
+            "x402_enabled": any(bool(v.get("x402_url")) for v in vendor_whitelist),
+            "x402_url": next((v.get("x402_url") for v in vendor_whitelist if v.get("x402_url")), None),
+            "erc8004_agent_id": next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),
+            "erc8004_registry_url": next((v.get("erc8004_registry_url") for v in vendor_whitelist if v.get("erc8004_registry_url")), None),
         }
 
         self._log_audit("PACT_CREATED", pact_id, {
@@ -902,6 +911,10 @@ class RealCAWClient:
             "created_at": pact.get("created_at") or datetime.now(timezone.utc).isoformat(),
             "expires_at": pact.get("expires_at") or "",
             "api_key": "",
+            "x402_enabled": any(bool(v.get("x402_url")) for v in vendor_whitelist),
+            "x402_url": next((v.get("x402_url") for v in vendor_whitelist if v.get("x402_url")), None),
+            "erc8004_agent_id": next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),
+            "erc8004_registry_url": next((v.get("erc8004_registry_url") for v in vendor_whitelist if v.get("erc8004_registry_url")), None),
         }
 
     def _api_tx_to_dict(self, api_tx: Dict[str, Any]) -> Dict[str, Any]:
