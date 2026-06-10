@@ -922,7 +922,7 @@ class RealCAWClient:
             "status": status_label,
             "reason": api_tx.get("result", "") or status_display or str(raw_status or ""),
             "remaining_budget": 0.0,
-            "tx_hash": api_tx.get("tx_hash") or api_tx.get("transaction_hash", ""),
+            "tx_hash": api_tx.get("tx_hash") or api_tx.get("transaction_hash") or "",
             "metadata": {},
             "alert_level": "none",
         }

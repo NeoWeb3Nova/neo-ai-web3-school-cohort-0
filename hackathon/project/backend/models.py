@@ -90,6 +90,25 @@ class TransactionRecord(BaseModel):
     metadata: Dict[str, Any]
     alert_level: str
 
+    @field_validator(
+        "tx_id",
+        "card_id",
+        "agent_id",
+        "timestamp",
+        "vendor",
+        "vendor_address",
+        "currency",
+        "status",
+        "reason",
+        "tx_hash",
+        "alert_level",
+        mode="before",
+    )
+    @classmethod
+    def none_string_fields_to_empty_string(cls, value: Any) -> str:
+        """CAW may return null for optional transaction strings; keep frontend contract as string."""
+        return "" if value is None else str(value)
+
 
 class AuditSummaryResponse(BaseModel):
     month: str

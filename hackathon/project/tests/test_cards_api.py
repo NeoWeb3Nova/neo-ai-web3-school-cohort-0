@@ -11,7 +11,7 @@ os.environ.setdefault("CAW_MODE", "mock")
 from fastapi.testclient import TestClient
 
 import main
-from models import CardResponse
+from models import CardResponse, TransactionRecord
 from real_caw_client import RealCAWClient
 
 
@@ -181,3 +181,51 @@ def test_extract_list_items_accepts_caw_list_shapes():
     assert RealCAWClient._extract_list_items([{"id": "a"}, "bad"], "pacts") == [{"id": "a"}]
     assert RealCAWClient._extract_list_items({"pacts": [{"id": "b"}]}, "pacts") == [{"id": "b"}]
     assert RealCAWClient._extract_list_items({"items": [{"id": "c"}]}, "pacts") == [{"id": "c"}]
+
+
+def test_real_caw_transaction_hash_none_normalizes_to_empty_string():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+
+    tx = client._api_tx_to_dict(
+        {
+            "request_id": "tx-null-hash",
+            "pact_id": "pact-1",
+            "principal_id": "agent-1",
+            "created_at": "2026-06-10T00:00:00Z",
+            "dst_addr": "0xVendor",
+            "amount": "0.0001",
+            "token_id": "BASE_USDC",
+            "status": 902,
+            "status_display": "Rejected",
+            "tx_hash": None,
+            "transaction_hash": None,
+        }
+    )
+
+    assert tx["status"] == "DENIED"
+    assert tx["tx_hash"] == ""
+    assert TransactionRecord(**tx).tx_hash == ""
+
+
+def test_transaction_record_normalizes_null_string_fields():
+    tx = TransactionRecord(
+        tx_id="tx-1",
+        card_id="card-1",
+        agent_id="agent-1",
+        timestamp="2026-06-10T00:00:00Z",
+        vendor="Vendor",
+        vendor_address=None,
+        amount=1.0,
+        currency="USDC",
+        status="APPROVED",
+        reason=None,
+        remaining_budget=0.0,
+        tx_hash=None,
+        metadata={},
+        alert_level="none",
+    )
+
+    assert tx.vendor_address == ""
+    assert tx.reason == ""
+    assert tx.tx_hash == ""
