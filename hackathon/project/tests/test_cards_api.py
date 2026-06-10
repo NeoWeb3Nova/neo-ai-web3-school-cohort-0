@@ -123,3 +123,61 @@ def test_real_caw_statuses_are_normalized_for_frontend():
     assert client._extract_pact_status({"state": "approval_pending"}) == "PENDING_APPROVAL"
     assert client._extract_pact_status({"pact_status": "WITHDRAWN"}) == "REVOKED"
     assert client._extract_pact_status({"status": None}) == "UNKNOWN"
+
+
+def test_real_caw_list_cards_prefers_sync_http_and_avoids_sdk_loop():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._owner = "OPC Owner"
+    client._cards = {}
+
+    class LoopPoisonedSDK:
+        def list_pacts(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("SDK list_pacts should not be called when HTTP succeeds")
+
+    client._client = LoopPoisonedSDK()
+
+    def fake_http_get_json(path, params):
+        assert path == "/api/v1/pacts"
+        assert params["wallet_id"] == "wallet-123"
+        return {
+            "result": {
+                "pacts": [
+                    {
+                        "pact_id": "pact-http-1",
+                        "intent": "HTTP Pact",
+                        "status": "APPROVED",
+                        "spec": {
+                            "policies": [
+                                {
+                                    "rules": {
+                                        "deny_if": {
+                                            "amount_usd_gt": "25",
+                                            "usage_limits": {"rolling_30d": {"amount_usd_gt": "100"}},
+                                        },
+                                        "when": {"destination_address_in": []},
+                                    }
+                                }
+                            ]
+                        },
+                        "created_at": "2026-06-10T00:00:00+00:00",
+                        "expires_at": None,
+                    }
+                ]
+            }
+        }
+
+    client._http_get_json = fake_http_get_json
+
+    cards = client.list_cards()
+
+    assert len(cards) == 1
+    assert cards[0]["card_id"] == "pact-http-1"
+    assert cards[0]["status"] == "ACTIVE"
+    assert cards[0]["budget"]["monthly_max"] == 100.0
+
+
+def test_extract_list_items_accepts_caw_list_shapes():
+    assert RealCAWClient._extract_list_items([{"id": "a"}, "bad"], "pacts") == [{"id": "a"}]
+    assert RealCAWClient._extract_list_items({"pacts": [{"id": "b"}]}, "pacts") == [{"id": "b"}]
+    assert RealCAWClient._extract_list_items({"items": [{"id": "c"}]}, "pacts") == [{"id": "c"}]

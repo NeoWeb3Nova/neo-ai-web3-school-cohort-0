@@ -357,18 +357,55 @@ class RealCAWClient:
             raise ValueError(f"Card {card_id} not found: {exc}")
 
     def list_cards(self) -> List[Dict[str, Any]]:
-        """列出所有 Pacts（本地缓存 + API 补充）。"""
+        """列出所有 Pacts（本地缓存 + API 补充）。
+
+        FastAPI sync endpoints may call this repeatedly/concurrently. Prefer sync HTTP
+        for the read path so the SDK's aiohttp client is not reused across event loops.
+        """
         try:
-            result = _sync(self._client.list_pacts(wallet_id=self.wallet_uuid))
-            pacts = result if isinstance(result, list) else result.get("pacts", [])
+            pacts = self._fetch_pacts_via_http()
             for p in pacts:
                 pid = p.get("pact_id") or p.get("id")
                 if pid:
                     self._cards[pid] = self._pact_to_card_dict(p)
         except Exception as exc:
-            logger.warning("[CAW] list_pacts API call failed: %s", exc)
+            logger.warning("[CAW] HTTP list_pacts failed (%s), falling back to SDK", exc)
+            try:
+                result = _sync(self._client.list_pacts(wallet_id=self.wallet_uuid))
+                pacts = self._extract_list_items(result, preferred_key="pacts")
+                for p in pacts:
+                    pid = p.get("pact_id") or p.get("id")
+                    if pid:
+                        self._cards[pid] = self._pact_to_card_dict(p)
+            except Exception as exc2:
+                logger.warning("[CAW] SDK list_pacts also failed: %s", exc2)
 
         return [dict(c) for c in self._cards.values()]
+
+    def _fetch_pacts_via_http(self) -> List[Dict[str, Any]]:
+        """使用同步 urllib 调用 CAW REST API 获取 Pact 列表。"""
+        data = self._http_get_json(
+            "/api/v1/pacts",
+            {
+                "wallet_id": self.wallet_uuid,
+                "limit": 100,
+                "include_default": "true",
+            },
+        )
+        return self._extract_list_items(data.get("result", data), preferred_key="pacts")
+
+    @staticmethod
+    def _extract_list_items(payload: Any, preferred_key: str = "items") -> List[Dict[str, Any]]:
+        """Normalize CAW list responses that may be plain lists or nested dicts."""
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if not isinstance(payload, dict):
+            return []
+        for key in (preferred_key, "items", "records", "data", "results"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return []
 
     def get_wallet_balance(self) -> Dict[str, Any]:
         """获取钱包真实余额。
