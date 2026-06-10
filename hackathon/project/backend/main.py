@@ -44,6 +44,7 @@ from models import (
     AuditSummaryResponse,
     AttackRequest,
     AttackResponse,
+    WalletBalanceResponse,
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -112,6 +113,16 @@ def config():
         default_token=os.getenv("CAW_DEFAULT_TOKEN", "BASE_USDC"),
         caw_mode=os.getenv("CAW_MODE", "mock"),
     )
+
+
+@app.get("/wallet/balance", response_model=WalletBalanceResponse)
+def wallet_balance():
+    """Return the real wallet balance from CAW."""
+    try:
+        result = _caw().get_wallet_balance()
+        return WalletBalanceResponse(**result)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ═══════════════════════════════════════════════════════════════

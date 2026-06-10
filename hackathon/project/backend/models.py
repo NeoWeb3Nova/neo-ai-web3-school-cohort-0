@@ -107,3 +107,26 @@ class AttackResponse(BaseModel):
     status: str
     reason: str
     tx_id: Optional[str] = None
+
+
+class WalletBalanceAsset(BaseModel):
+    wallet_uuid: str
+    chain_id: str
+    token_id: str
+    amount: float
+    amount_formatted: str
+    currency: str
+    address: str = ""
+    updated_at: str
+
+
+class WalletBalanceResponse(BaseModel):
+    wallet_uuid: str
+    chain_id: str
+    token_id: str
+    balance: float
+    balance_formatted: str
+    currency: str
+    address: str = ""
+    updated_at: str
+    balances: List[WalletBalanceAsset] = []

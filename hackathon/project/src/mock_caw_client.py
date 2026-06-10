@@ -233,6 +233,35 @@ class MockCAWClient:
     def list_cards(self) -> List[Dict[str, Any]]:
         return [self._card_to_dict(c) for c in self._cards.values()]
 
+    def get_wallet_balance(self) -> Dict[str, Any]:
+        """
+        模拟获取钱包余额。在 mock 模式下返回固定的演示余额。
+        """
+        now = datetime.now(timezone.utc)
+        balances = [
+            {
+                "wallet_uuid": "mock-wallet-uuid",
+                "chain_id": "BASE_ETH",
+                "token_id": "BASE_USDC",
+                "amount": 5000.0,
+                "amount_formatted": "5000",
+                "currency": "USDC",
+                "address": "0xMockTreasury",
+                "updated_at": now.isoformat(),
+            }
+        ]
+        return {
+            "wallet_uuid": "mock-wallet-uuid",
+            "chain_id": "BASE_ETH",
+            "token_id": "BASE_USDC",
+            "balance": 5000.0,
+            "balance_formatted": "5000",
+            "currency": "USDC",
+            "address": "0xMockTreasury",
+            "updated_at": now.isoformat(),
+            "balances": balances,
+        }
+
     # ───────────────────────────────────────────
     # Policy Engine — 三阶段评估（核心）
     # ───────────────────────────────────────────

@@ -26,7 +26,7 @@ import {
 } from 'recharts';
 import { INITIAL_CARDS, INITIAL_TRANSACTIONS, MONTHLY_SUMMARY } from '../data/mockData';
 import { CHART, PIE_COLORS } from '../data/chartTheme';
-import { fetchDashboard } from '../api/client';
+import { fetchDashboard, fetchWalletBalance, type WalletBalance } from '../api/client';
 
 const COLORS = PIE_COLORS;
 
@@ -46,16 +46,18 @@ export default function Dashboard() {
   const [liveCards, setLiveCards] = useState<typeof INITIAL_CARDS | null>(null);
   const [liveTxs, setLiveTxs] = useState<typeof INITIAL_TRANSACTIONS | null>(null);
   const [liveSummary, setLiveSummary] = useState<typeof MONTHLY_SUMMARY | null>(null);
+  const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchDashboard()
-      .then((data) => {
+    Promise.all([fetchDashboard(), fetchWalletBalance()])
+      .then(([data, balance]) => {
         if (cancelled) return;
         setLiveCards(data.cards);
         setLiveTxs(data.transactions);
         setLiveSummary(data.summary);
+        setWalletBalance(balance);
         setError(null);
       })
       .catch((err) => {
@@ -130,7 +132,13 @@ export default function Dashboard() {
   const formatAddr = (addr: string) =>
     addr.length > 12 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
 
-  const treasuryBalance = stats.totalBudget - stats.totalSpent;
+  const treasuryBalance = walletBalance?.balance ?? stats.totalBudget - stats.totalSpent;
+  const treasuryTokenLabel = walletBalance?.currency ?? t('common.usdc');
+  const treasuryBalanceLabel = walletBalance?.balance_formatted ?? formatCurrency(treasuryBalance);
+  const treasuryAssets = walletBalance?.balances?.filter((asset) => asset.amount > 0) ?? [];
+  const treasuryAssetSummary = treasuryAssets.length > 0
+    ? treasuryAssets.map((asset) => `${asset.amount_formatted} ${asset.currency}`).join(' · ')
+    : null;
   const utilizationRate = stats.totalBudget > 0
     ? ((stats.totalApproved / stats.totalBudget) * 100).toFixed(1)
     : '0.0';
@@ -156,9 +164,14 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="text-xl lg:text-2xl font-bold text-text-primary tracking-tight">
-            {formatCurrency(treasuryBalance)}{' '}
-            <span className="text-sm font-medium text-text-muted">{t('common.usdc')}</span>
+            {treasuryBalanceLabel}{' '}
+            <span className="text-sm font-medium text-text-muted">{treasuryTokenLabel}</span>
           </p>
+          {treasuryAssetSummary && (
+            <p className="mt-1 truncate text-[11px] text-text-muted" title={treasuryAssetSummary}>
+              {treasuryAssets.length} assets: {treasuryAssetSummary}
+            </p>
+          )}
           <div className="flex items-center gap-1.5 mt-2">
             <ArrowUpRight className="w-3.5 h-3.5 text-accent-gold" strokeWidth={2} />
             <span className="text-xs font-medium text-accent-gold">

@@ -180,3 +180,30 @@ export async function runAttack(attackId: string, cardId: string, metadata?: Rec
 export async function resetDemo(): Promise<{ status: string; reason?: string }> {
   return apiFetch('/demo/reset', { method: 'POST' });
 }
+
+export interface WalletBalanceAsset {
+  wallet_uuid: string;
+  chain_id: string;
+  token_id: string;
+  amount: number;
+  amount_formatted: string;
+  currency: string;
+  address: string;
+  updated_at: string;
+}
+
+export interface WalletBalance {
+  wallet_uuid: string;
+  chain_id: string;
+  token_id: string;
+  balance: number;
+  balance_formatted: string;
+  currency: string;
+  address: string;
+  updated_at: string;
+  balances: WalletBalanceAsset[];
+}
+
+export async function fetchWalletBalance(): Promise<WalletBalance> {
+  return apiFetch<WalletBalance>('/wallet/balance');
+}

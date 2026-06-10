@@ -373,6 +373,11 @@ class RealCAWClient:
     def get_wallet_balance(self) -> Dict[str, Any]:
         """获取钱包真实余额。
 
+        CAW wallet 是多链、多资产钱包。`chain_id`/`token_id` 是过滤条件；如果只查
+        `BASE_ETH + BASE_USDC`，而钱包实际持有 `SETH` / `SOLDEV_SOL_USDC`，API 会
+        正确返回空列表，前端就会误显示 0。因此 dashboard 先拉取钱包所有资产，再
+        选择一个有余额的主资产展示，同时把完整 balances 列表返回给前端。
+
         在 FastAPI 同步 endpoint 中反复用 SDK async client 时，aiohttp 连接可能绑定到
         上一次 asyncio.run() 创建的 event loop，导致 `Future attached to a different loop`。
         余额查询是简单 GET，因此优先用同步 HTTP，避免 event-loop 交叉污染。
@@ -386,8 +391,6 @@ class RealCAWClient:
             result = _sync(
                 self._client.list_balances(
                     wallet_uuid=self.wallet_uuid,
-                    chain_id=_default_chain(),
-                    token_id=_default_token(),
                     limit=50,
                 )
             )
@@ -395,7 +398,7 @@ class RealCAWClient:
             return self._balance_response_from_records(balances)
         except Exception as exc2:
             logger.warning("[CAW] SDK list_balances also failed: %s", exc2)
-            return self._build_balance_response(0.0, _default_token())
+            return self._build_balance_response(0.0, _default_token(), balances=[])
 
     def _fetch_balance_via_http(self) -> Dict[str, Any]:
         """使用同步 urllib 调用 CAW REST API 获取余额。"""
@@ -403,8 +406,6 @@ class RealCAWClient:
             "/api/v1/wallets/balances",
             {
                 "wallet_uuid": self.wallet_uuid,
-                "chain_id": _default_chain(),
-                "token_id": _default_token(),
                 "limit": 50,
             },
         )
@@ -419,19 +420,44 @@ class RealCAWClient:
         if not isinstance(balances, list):
             balances = []
 
-        for b in balances:
-            token_id = str(b.get("token_id") or b.get("token") or "")
-            if token_id == target_token or target_token in token_id:
-                balance = float(b.get("amount", b.get("balance", 0)) or 0)
-                return self._build_balance_response(balance, token_id, b.get("updated_at"))
+        assets = [self._balance_asset_from_record(b) for b in balances]
 
-        # 未找到目标 token，返回第一个有余额的资产作为主要余额
-        if balances:
-            first = balances[0]
-            token = str(first.get("token_id") or first.get("token") or target_token)
-            balance = float(first.get("amount", first.get("balance", 0)) or 0)
-            return self._build_balance_response(balance, token, first.get("updated_at"))
-        return self._build_balance_response(0.0, target_token)
+        def is_positive(asset: Dict[str, Any]) -> bool:
+            return float(asset.get("amount", 0) or 0) > 0
+
+        # 首选：配置的目标 token 有余额；其次任意 USDC 有余额；再次任意有余额资产。
+        # 如果都没有余额，再回退到目标 token 记录或第一条记录。
+        selected = next((a for a in assets if a["token_id"] == target_token and is_positive(a)), None)
+        selected = selected or next((a for a in assets if a["token_id"].endswith("USDC") and is_positive(a)), None)
+        selected = selected or next((a for a in assets if is_positive(a)), None)
+        selected = selected or next((a for a in assets if a["token_id"] == target_token), None)
+        selected = selected or (assets[0] if assets else None)
+
+        if selected:
+            return self._build_balance_response(
+                float(selected["amount"]),
+                selected["token_id"],
+                selected.get("updated_at"),
+                chain_id=selected.get("chain_id"),
+                address=selected.get("address"),
+                balances=assets,
+            )
+        return self._build_balance_response(0.0, target_token, balances=[])
+
+    def _balance_asset_from_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize a CAW balance record for API/frontend consumption."""
+        token_id = str(record.get("token_id") or record.get("token") or _default_token())
+        amount = float(record.get("amount", record.get("balance", 0)) or 0)
+        return {
+            "wallet_uuid": record.get("wallet_uuid") or self.wallet_uuid,
+            "chain_id": record.get("chain_id") or "",
+            "token_id": token_id,
+            "amount": amount,
+            "amount_formatted": f"{amount:.6f}".rstrip("0").rstrip(".") or "0",
+            "currency": token_id.split("_")[-1] if "_" in token_id else token_id,
+            "address": record.get("address") or record.get("address_id") or "",
+            "updated_at": record.get("updated_at") or record.get("balance_updated_at") or datetime.now(timezone.utc).isoformat(),
+        }
 
     def _http_get_json(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """CAW REST GET helper. Keeps read-only dashboard calls off the SDK async loop."""
@@ -449,16 +475,26 @@ class RealCAWClient:
         with urllib.request.urlopen(req, timeout=15) as res:
             return json.loads(res.read().decode())
 
-    def _build_balance_response(self, balance: float, token_id: str, updated_at: Optional[str] = None) -> Dict[str, Any]:
+    def _build_balance_response(
+        self,
+        balance: float,
+        token_id: str,
+        updated_at: Optional[str] = None,
+        chain_id: Optional[str] = None,
+        address: Optional[str] = None,
+        balances: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """构建统一的余额响应格式。"""
         return {
             "wallet_uuid": self.wallet_uuid,
-            "chain_id": _default_chain(),
+            "chain_id": chain_id or _default_chain(),
             "token_id": token_id,
             "balance": balance,
-            "balance_formatted": f"{balance:.6f}".rstrip("0").rstrip("."),
+            "balance_formatted": f"{balance:.6f}".rstrip("0").rstrip(".") or "0",
             "currency": token_id.split("_")[-1] if "_" in token_id else token_id,
+            "address": address or "",
             "updated_at": updated_at or datetime.now(timezone.utc).isoformat(),
+            "balances": balances or [],
         }
 
     # ───────────────────────────────────────────
