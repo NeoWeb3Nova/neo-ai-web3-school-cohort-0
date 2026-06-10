@@ -101,9 +101,9 @@
     "spent": "已支出"
   },
   "cards": {
-    "title": "智能体卡片",
-    "subtitle": "管理 AI 智能体的支付卡片",
-    "issueNewCard": "发行新卡",
+    "title": "智能体权限卡",
+    "subtitle": "管理 AI 智能体的支付权限卡",
+    "issueNewCard": "发行权限卡",
     "issueFirstCard": "发行第一张卡",
     "issueCardTitle": "发行新智能体卡片",
     "agentName": "智能体名称",
@@ -134,6 +134,7 @@
     "selectVendors": "选择该智能体可以支付的供应商",
     "cooldownHours": "冷却时间（小时）",
     "durationDays": "有效期（天）",
+    "useInAgent": "在智能体控制台使用",
     "days": "天"
   },
   "agent": {
@@ -167,7 +168,13 @@
     "perTxExceeded": "金额超过单笔交易上限",
     "budgetExceeded": "金额超过剩余月度预算",
     "amountPositive": "金额必须大于零",
-    "permissionDenied": "卡片没有执行此请求的权限"
+    "permissionDenied": "卡片没有执行此请求的权限",
+    "vendorRequired": "请选择已授权供应商",
+    "noActiveCards": "没有活跃的权限卡",
+    "noActiveCardsDesc": "请先在卡片页面为智能体发行权限卡并完成审批，然后智能体才能提交真实支付请求。",
+    "goToCards": "前往卡片页",
+    "recentTransactions": "最近交易",
+    "noRecentTransactions": "这张卡还没有交易"
   },
   "attack": {
     "title": "威胁模拟中心",

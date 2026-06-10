@@ -85,6 +85,27 @@ def _is_mock() -> bool:
     return isinstance(_caw(), MockCAWClient)
 
 
+def _cards_with_spend(cards: List[Dict[str, Any]], transactions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Return card dicts with budget.spent recomputed from approved transactions."""
+    spent_by_card: Dict[str, float] = {}
+    for tx in transactions:
+        if str(tx.get("status", "")).upper() != "APPROVED":
+            continue
+        card_id = tx.get("card_id")
+        if not card_id:
+            continue
+        spent_by_card[str(card_id)] = spent_by_card.get(str(card_id), 0.0) + float(tx.get("amount", 0) or 0)
+
+    enriched: List[Dict[str, Any]] = []
+    for card in cards:
+        next_card = dict(card)
+        budget = dict(next_card.get("budget") or {})
+        budget["spent"] = spent_by_card.get(str(next_card.get("card_id", "")), float(budget.get("spent", 0) or 0))
+        next_card["budget"] = budget
+        enriched.append(next_card)
+    return enriched
+
+
 # ═══════════════════════════════════════════════════════════════
 # Health & Config
 # ═══════════════════════════════════════════════════════════════
@@ -148,8 +169,10 @@ def create_card(req: CreateCardRequest):
 
 @app.get("/cards", response_model=List[CardResponse])
 def list_cards():
-    cards = _caw().list_cards()
-    return [CardResponse(**c) for c in cards]
+    caw = _caw()
+    cards = caw.list_cards()
+    transactions = caw.list_transaction_records()
+    return [CardResponse(**c) for c in _cards_with_spend(cards, transactions)]
 
 
 @app.get("/cards/{card_id}", response_model=CardResponse)
@@ -283,7 +306,7 @@ def dashboard():
     transactions = caw.list_transaction_records()
     summary = caw.get_monthly_summary()
     return {
-        "cards": cards,
+        "cards": _cards_with_spend(cards, transactions),
         "transactions": transactions,
         "summary": summary,
     }

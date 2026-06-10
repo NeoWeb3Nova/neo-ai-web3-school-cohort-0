@@ -44,6 +44,45 @@ class FakeCAWClient:
         assert card_id == CARD_WITH_NULL_EXPIRY["card_id"]
         return CARD_WITH_NULL_EXPIRY
 
+    def list_transaction_records(self, card_id: str | None = None):
+        records = [
+            {
+                "tx_id": "tx-approved",
+                "card_id": CARD_WITH_NULL_EXPIRY["card_id"],
+                "agent_id": CARD_WITH_NULL_EXPIRY["agent_id"],
+                "timestamp": "2026-06-10T00:01:00+00:00",
+                "vendor": "OpenAI",
+                "vendor_address": "0xVendor",
+                "amount": 12.5,
+                "currency": "USDC",
+                "status": "APPROVED",
+                "reason": "ok",
+                "remaining_budget": 87.5,
+                "tx_hash": "0xabc",
+                "metadata": {},
+                "alert_level": "none",
+            },
+            {
+                "tx_id": "tx-denied",
+                "card_id": CARD_WITH_NULL_EXPIRY["card_id"],
+                "agent_id": CARD_WITH_NULL_EXPIRY["agent_id"],
+                "timestamp": "2026-06-10T00:02:00+00:00",
+                "vendor": "Evil",
+                "vendor_address": "0xEvil",
+                "amount": 99.0,
+                "currency": "USDC",
+                "status": "DENIED",
+                "reason": "blocked",
+                "remaining_budget": 87.5,
+                "tx_hash": "",
+                "metadata": {},
+                "alert_level": "blocked",
+            },
+        ]
+        if card_id:
+            return [r for r in records if r["card_id"] == card_id]
+        return records
+
 
 def test_card_response_normalizes_null_expiry_to_empty_string():
     card = CardResponse(**CARD_WITH_NULL_EXPIRY)
@@ -61,6 +100,7 @@ def test_list_cards_accepts_caw_pacts_with_null_expiry():
 
     assert response.status_code == 200
     assert response.json()[0]["expires_at"] == ""
+    assert response.json()[0]["budget"]["spent"] == 12.5
 
 
 def test_get_card_accepts_caw_pact_with_null_expiry():

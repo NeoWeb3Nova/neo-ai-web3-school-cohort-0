@@ -27,6 +27,7 @@ import {
 import { INITIAL_CARDS, INITIAL_TRANSACTIONS, MONTHLY_SUMMARY } from '../data/mockData';
 import { CHART, PIE_COLORS } from '../data/chartTheme';
 import { fetchDashboard, fetchWalletBalance, type WalletBalance } from '../api/client';
+import { normalizeCardStatus } from '../utils/cardStatus';
 
 const COLORS = PIE_COLORS;
 
@@ -73,8 +74,8 @@ export default function Dashboard() {
   const summary = liveSummary ?? MONTHLY_SUMMARY;
 
   const stats = useMemo(() => {
-    const activeCards = cards.filter((c) => c.status === 'ACTIVE').length;
-    const pendingCards = cards.filter((c) => c.status === 'PENDING_APPROVAL').length;
+    const activeCards = cards.filter((c) => normalizeCardStatus(c.status) === 'ACTIVE').length;
+    const pendingCards = cards.filter((c) => normalizeCardStatus(c.status) === 'PENDING_APPROVAL').length;
     const approvedTx = transactions.filter((t) => t.status === 'APPROVED');
     const deniedTx = transactions.filter((t) => t.status === 'DENIED');
     const totalApproved = approvedTx.reduce((s, t) => s + t.amount, 0);

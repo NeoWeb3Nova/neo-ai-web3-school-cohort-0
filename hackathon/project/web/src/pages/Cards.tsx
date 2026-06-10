@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import {
   CreditCard,
   Plus,
   CheckCircle,
-  XCircle,
   Clock,
   Trash2,
   Lock,
-  Unlock,
   ChevronDown,
   ChevronUp,
   Wallet,
@@ -17,12 +16,15 @@ import {
   AlertCircle,
   RefreshCw,
   WifiOff,
+  Send,
 } from 'lucide-react';
 import { type CardPact, ALL_VENDORS } from '../data/mockData';
 import { cawApi } from '../api/caw';
+import { getCardStatusConfig, normalizeCardStatus } from '../utils/cardStatus';
 
 export default function Cards() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [cards, setCards] = useState<CardPact[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -44,7 +46,7 @@ export default function Cards() {
       const data = await cawApi.listCards();
       setCards(data);
       setOffline(false);
-    } catch (e) {
+    } catch {
       setOffline(true);
     } finally {
       setLoading(false);
@@ -137,67 +139,6 @@ export default function Cards() {
     } finally {
       setActionLoading(null);
     }
-  };
-
-  type StatusConfig = { color: string; bg: string; icon: React.ReactNode; label: string };
-
-  const statusConfig: Record<string, StatusConfig> = {
-    ACTIVE: {
-      color: 'text-accent-patina',
-      bg: 'bg-accent-patina/10',
-      icon: <Unlock className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.active'),
-    },
-    PENDING_APPROVAL: {
-      color: 'text-accent-amber',
-      bg: 'bg-accent-amber/10',
-      icon: <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.pending'),
-    },
-    PENDING: {
-      color: 'text-accent-amber',
-      bg: 'bg-accent-amber/10',
-      icon: <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.pending'),
-    },
-    COMPLETED: {
-      color: 'text-accent-patina',
-      bg: 'bg-accent-patina/10',
-      icon: <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.completed'),
-    },
-    REVOKED: {
-      color: 'text-accent-coral',
-      bg: 'bg-accent-coral/10',
-      icon: <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.revoked'),
-    },
-    REJECTED: {
-      color: 'text-accent-coral',
-      bg: 'bg-accent-coral/10',
-      icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.revoked'),
-    },
-    EXPIRED: {
-      color: 'text-text-muted',
-      bg: 'bg-bg-hover',
-      icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.expired'),
-    },
-    UNKNOWN: {
-      color: 'text-text-muted',
-      bg: 'bg-bg-hover',
-      icon: <AlertCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
-      label: t('common.unknown'),
-    },
-  };
-
-  const getStatusConfig = (rawStatus: string): StatusConfig => {
-    const normalized = String(rawStatus || 'UNKNOWN').toUpperCase();
-    return statusConfig[normalized] ?? {
-      ...statusConfig.UNKNOWN,
-      label: `${t('common.unknown')} (${rawStatus || '-'})`,
-    };
   };
 
   const progressPct = (spent: number, max: number) =>
@@ -464,7 +405,8 @@ export default function Cards() {
       {/* Cards Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
         {cards.map((card) => {
-          const status = getStatusConfig(card.status);
+          const status = getCardStatusConfig(card.status, t);
+          const normalizedStatus = normalizeCardStatus(card.status);
           const isExpanded = expandedCard === card.card_id;
           const pct = progressPct(card.budget.spent, card.budget.monthly_max);
 
@@ -616,7 +558,7 @@ export default function Cards() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-3 pt-2">
-                    {card.status === 'PENDING_APPROVAL' && (
+                    {normalizedStatus === 'PENDING_APPROVAL' && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -629,20 +571,32 @@ export default function Cards() {
                         {actionLoading === card.card_id ? t('common.processing') : t('cards.approve')}
                       </button>
                     )}
-                    {card.status === 'ACTIVE' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setConfirmRevoke(card.card_id);
-                        }}
-                        disabled={!!actionLoading}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-coral/10 text-accent-coral rounded-im text-xs font-semibold hover:bg-accent-coral/20 border border-accent-coral/30 transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
-                        {t('cards.revokeCard')}
-                      </button>
+                    {normalizedStatus === 'ACTIVE' && (
+                      <>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/agent?card_id=${encodeURIComponent(card.card_id)}`);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-patina/10 text-accent-patina rounded-im text-xs font-semibold hover:bg-accent-patina/20 border border-accent-patina/30 transition-colors"
+                        >
+                          <Send className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          {t('cards.useInAgent')}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmRevoke(card.card_id);
+                          }}
+                          disabled={!!actionLoading}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-coral/10 text-accent-coral rounded-im text-xs font-semibold hover:bg-accent-coral/20 border border-accent-coral/30 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                          {t('cards.revokeCard')}
+                        </button>
+                      </>
                     )}
-                    {card.status === 'REVOKED' && (
+                    {normalizedStatus === 'REVOKED' && (
                       <span className="text-xs text-text-muted flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />
                         {t('cards.cardRevoked')}

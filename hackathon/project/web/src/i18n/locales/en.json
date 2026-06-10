@@ -101,9 +101,9 @@
     "spent": "Spent"
   },
   "cards": {
-    "title": "Agent Cards",
-    "subtitle": "Manage payment cards for your AI agents",
-    "issueNewCard": "Issue New Card",
+    "title": "Agent Spending Cards",
+    "subtitle": "Manage payment permission cards for your AI agents",
+    "issueNewCard": "Issue Spending Card",
     "issueFirstCard": "Issue First Card",
     "issueCardTitle": "Issue New Agent Card",
     "agentName": "Agent Name",
@@ -134,6 +134,7 @@
     "selectVendors": "Select vendors this agent can pay",
     "cooldownHours": "Cooldown (hours)",
     "durationDays": "Duration (days)",
+    "useInAgent": "Use in Agent Console",
     "days": "days"
   },
   "agent": {
@@ -167,7 +168,13 @@
     "perTxExceeded": "Amount exceeds single-transaction limit",
     "budgetExceeded": "Amount exceeds remaining monthly budget",
     "amountPositive": "Amount must be greater than zero",
-    "permissionDenied": "Card does not have permission for this request"
+    "permissionDenied": "Card does not have permission for this request",
+    "vendorRequired": "Select an authorized vendor",
+    "noActiveCards": "No active spending cards",
+    "noActiveCardsDesc": "Issue a spending card on the Cards page and approve it before the agent can submit real payment requests.",
+    "goToCards": "Go to Cards",
+    "recentTransactions": "Recent Transactions",
+    "noRecentTransactions": "No transactions for this card yet"
   },
   "attack": {
     "title": "Threat Simulation Center",
