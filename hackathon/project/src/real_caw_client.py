@@ -58,17 +58,14 @@ except ImportError:  # pragma: no cover
 # ═══════════════════════════════════════════════════════════════
 # Helpers
 # ═══════════════════════════════════════════════════════════════
-
 def _sync(coro) -> Any:
-    """在同步上下文中执行异步协程。"""
+    """在同步上下文中执行异步协程。
+    通过 nest_asyncio 允许在已运行的 event loop 中嵌套执行，避免
+    与 uvicorn / FastAPI 的 event loop 冲突。"""
+    import nest_asyncio
+    nest_asyncio.apply()
     try:
         loop = asyncio.get_running_loop()
-        # 如果已在事件循环中（如 Jupyter / 某些 Web 框架），尝试 nest_asyncio
-        try:
-            import nest_asyncio
-            nest_asyncio.apply()
-        except ImportError:
-            pass
         return loop.run_until_complete(coro)
     except RuntimeError:
         return asyncio.run(coro)
@@ -373,6 +370,97 @@ class RealCAWClient:
 
         return [dict(c) for c in self._cards.values()]
 
+    def get_wallet_balance(self) -> Dict[str, Any]:
+        """获取钱包真实余额。
+
+        在 FastAPI 同步 endpoint 中反复用 SDK async client 时，aiohttp 连接可能绑定到
+        上一次 asyncio.run() 创建的 event loop，导致 `Future attached to a different loop`。
+        余额查询是简单 GET，因此优先用同步 HTTP，避免 event-loop 交叉污染。
+        """
+        try:
+            return self._fetch_balance_via_http()
+        except Exception as exc:
+            logger.warning("[CAW] HTTP list_balances failed (%s), falling back to SDK", exc)
+
+        try:
+            result = _sync(
+                self._client.list_balances(
+                    wallet_uuid=self.wallet_uuid,
+                    chain_id=_default_chain(),
+                    token_id=_default_token(),
+                    limit=50,
+                )
+            )
+            balances = result if isinstance(result, list) else result.get("balances", [])
+            return self._balance_response_from_records(balances)
+        except Exception as exc2:
+            logger.warning("[CAW] SDK list_balances also failed: %s", exc2)
+            return self._build_balance_response(0.0, _default_token())
+
+    def _fetch_balance_via_http(self) -> Dict[str, Any]:
+        """使用同步 urllib 调用 CAW REST API 获取余额。"""
+        data = self._http_get_json(
+            "/api/v1/wallets/balances",
+            {
+                "wallet_uuid": self.wallet_uuid,
+                "chain_id": _default_chain(),
+                "token_id": _default_token(),
+                "limit": 50,
+            },
+        )
+        balances = data.get("result", [])
+        return self._balance_response_from_records(balances)
+
+    def _balance_response_from_records(self, balances: Any) -> Dict[str, Any]:
+        """从 CAW balance records 构建统一响应。"""
+        target_token = _default_token()
+        if isinstance(balances, dict):
+            balances = balances.get("items") or balances.get("balances") or []
+        if not isinstance(balances, list):
+            balances = []
+
+        for b in balances:
+            token_id = str(b.get("token_id") or b.get("token") or "")
+            if token_id == target_token or target_token in token_id:
+                balance = float(b.get("amount", b.get("balance", 0)) or 0)
+                return self._build_balance_response(balance, token_id, b.get("updated_at"))
+
+        # 未找到目标 token，返回第一个有余额的资产作为主要余额
+        if balances:
+            first = balances[0]
+            token = str(first.get("token_id") or first.get("token") or target_token)
+            balance = float(first.get("amount", first.get("balance", 0)) or 0)
+            return self._build_balance_response(balance, token, first.get("updated_at"))
+        return self._build_balance_response(0.0, target_token)
+
+    def _http_get_json(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """CAW REST GET helper. Keeps read-only dashboard calls off the SDK async loop."""
+        import urllib.parse
+        import urllib.request
+        import json
+
+        clean_params = {k: v for k, v in params.items() if v is not None}
+        query = urllib.parse.urlencode(clean_params)
+        url = f"{self.base_url.rstrip('/')}{path}?{query}" if query else f"{self.base_url.rstrip('/')}{path}"
+        req = urllib.request.Request(url, headers={
+            "X-API-Key": self.api_key,
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=15) as res:
+            return json.loads(res.read().decode())
+
+    def _build_balance_response(self, balance: float, token_id: str, updated_at: Optional[str] = None) -> Dict[str, Any]:
+        """构建统一的余额响应格式。"""
+        return {
+            "wallet_uuid": self.wallet_uuid,
+            "chain_id": _default_chain(),
+            "token_id": token_id,
+            "balance": balance,
+            "balance_formatted": f"{balance:.6f}".rstrip("0").rstrip("."),
+            "currency": token_id.split("_")[-1] if "_" in token_id else token_id,
+            "updated_at": updated_at or datetime.now(timezone.utc).isoformat(),
+        }
+
     # ───────────────────────────────────────────
     # Policy Engine — Payment
     # ───────────────────────────────────────────
@@ -489,19 +577,32 @@ class RealCAWClient:
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """查询交易记录（优先 API，失败回退本地缓存）。"""
+        """查询交易记录（优先同步 HTTP，失败回退 SDK / 本地缓存）。"""
         try:
-            result = _sync(
-                self._client.list_user_transactions(
-                    wallet_uuid=self.wallet_uuid,
-                    limit=100,
-                )
+            data = self._http_get_json(
+                "/api/v1/wallets/transactions",
+                {
+                    "wallet_uuid": self.wallet_uuid,
+                    "limit": 100,
+                },
             )
-            records = result if isinstance(result, list) else result.get("records", [])
-            # 转换为本地格式并缓存
+            records = data.get("result", [])
             self._transactions = [self._api_tx_to_dict(r) for r in records]
         except Exception as exc:
-            logger.warning("[CAW] list_user_transactions failed: %s", exc)
+            logger.warning("[CAW] HTTP list_user_transactions failed: %s", exc)
+            try:
+                result = _sync(
+                    self._client.list_user_transactions(
+                        wallet_uuid=self.wallet_uuid,
+                        limit=100,
+                        chain_id=_default_chain(),
+                        token_id=_default_token(),
+                    )
+                )
+                records = result if isinstance(result, list) else result.get("records", [])
+                self._transactions = [self._api_tx_to_dict(r) for r in records]
+            except Exception as exc2:
+                logger.warning("[CAW] SDK list_user_transactions also failed: %s", exc2)
 
         # 过滤
         filtered = []
@@ -518,16 +619,18 @@ class RealCAWClient:
     def get_monthly_summary(self, month: str = "2026-06") -> Dict[str, Any]:
         """生成月末审计报表（结合 API 审计日志 + 本地缓存）。"""
         try:
-            logs = _sync(
-                self._client.list_audit_logs(
-                    wallet_id=self.wallet_uuid,
-                    action="transfer.initiate",
-                    limit=200,
-                )
+            data = self._http_get_json(
+                "/api/v1/audit-logs",
+                {
+                    "wallet_id": self.wallet_uuid,
+                    "action": "transfer.initiate",
+                    "limit": 200,
+                },
             )
-            api_logs = logs if isinstance(logs, list) else logs.get("logs", [])
+            result = data.get("result", [])
+            api_logs = result if isinstance(result, list) else result.get("items", [])
         except Exception as exc:
-            logger.warning("[CAW] list_audit_logs failed: %s", exc)
+            logger.warning("[CAW] HTTP list_audit_logs failed: %s", exc)
             api_logs = []
 
         # 合并本地与 API 记录（简单去重）
@@ -717,22 +820,51 @@ class RealCAWClient:
 
     def _api_tx_to_dict(self, api_tx: Dict[str, Any]) -> Dict[str, Any]:
         """将 CAW transaction record 转换为本地 Transaction dict。"""
+        raw_status = api_tx.get("status")
+        status_display = str(api_tx.get("status_display") or "")
+        status_label = self._normalize_tx_status(raw_status, status_display)
+        dst_addr = api_tx.get("dst_addr") or api_tx.get("dst_address", "")
         return {
             "tx_id": api_tx.get("request_id") or api_tx.get("id") or "tx-unknown",
             "card_id": api_tx.get("pact_id") or api_tx.get("delegation_id", ""),
             "agent_id": api_tx.get("principal_id", "unknown"),
             "timestamp": api_tx.get("created_at", datetime.now(timezone.utc).isoformat()),
-            "vendor": api_tx.get("dst_addr", "")[:10] + "...",
-            "vendor_address": api_tx.get("dst_addr", ""),
-            "amount": float(api_tx.get("amount", 0)),
+            "vendor": (dst_addr[:10] + "...") if dst_addr else "unknown",
+            "vendor_address": dst_addr,
+            "amount": float(api_tx.get("amount", 0) or 0),
             "currency": api_tx.get("token_id", "USDC"),
-            "status": "APPROVED" if api_tx.get("status") == "success" else api_tx.get("status", "PENDING_APPROVAL").upper(),
-            "reason": api_tx.get("result", "") or api_tx.get("status", ""),
+            "status": status_label,
+            "reason": api_tx.get("result", "") or status_display or str(raw_status or ""),
             "remaining_budget": 0.0,
-            "tx_hash": api_tx.get("tx_hash", ""),
+            "tx_hash": api_tx.get("tx_hash") or api_tx.get("transaction_hash", ""),
             "metadata": {},
             "alert_level": "none",
         }
+
+    @staticmethod
+    def _normalize_tx_status(raw_status: Any, status_display: str = "") -> str:
+        """Normalize CAW transaction statuses; API may return integer enum codes."""
+        if isinstance(raw_status, str):
+            label = raw_status.upper()
+        elif status_display:
+            label = status_display.upper()
+        else:
+            # Known UserTransactionStatus examples from CAW API docs / responses:
+            # 900=success, 901=failed, 902=rejected. Unknown numeric states remain pending.
+            code_map = {
+                900: "APPROVED",
+                901: "DENIED",
+                902: "DENIED",
+            }
+            label = code_map.get(raw_status, "PENDING_APPROVAL")
+
+        if label in {"SUCCESS", "SUCCEEDED", "COMPLETED", "CONFIRMED"}:
+            return "APPROVED"
+        if label in {"FAILED", "FAILURE", "REJECTED", "DENIED", "CANCELLED", "CANCELED"}:
+            return "DENIED"
+        if label in {"APPROVED", "DENIED", "PENDING_APPROVAL"}:
+            return label
+        return "PENDING_APPROVAL"
 
 
 # ═══════════════════════════════════════════════════════════════
