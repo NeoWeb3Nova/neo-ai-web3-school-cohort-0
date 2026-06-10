@@ -803,9 +803,22 @@ class RealCAWClient:
     # ── SDK 响应解析适配 ──────────────────────────────
 
     def _extract_pact_status(self, pact: Dict[str, Any]) -> str:
-        """从 SDK get_pact 响应中提取状态字符串。"""
+        """从 SDK get_pact 响应中提取并归一化状态字符串。"""
         status = pact.get("status") or pact.get("state") or pact.get("pact_status", "")
-        return str(status).upper()
+        normalized = str(status or "").upper()
+        status_map = {
+            "APPROVED": "ACTIVE",
+            "APPROVAL_PENDING": "PENDING_APPROVAL",
+            "PENDING": "PENDING_APPROVAL",
+            "PENDING_APPROVAL": "PENDING_APPROVAL",
+            "ACTIVE": "ACTIVE",
+            "COMPLETED": "COMPLETED",
+            "REVOKED": "REVOKED",
+            "REJECTED": "REVOKED",
+            "EXPIRED": "EXPIRED",
+            "WITHDRAWN": "REVOKED",
+        }
+        return status_map.get(normalized, normalized or "UNKNOWN")
 
     def _pact_to_card_dict(self, pact: Dict[str, Any]) -> Dict[str, Any]:
         """将 CAW Pact 对象转换为与 Mock 兼容的 Card dict。"""

@@ -55,7 +55,8 @@ export interface CardPact {
   agent_id: string;
   agent_name: string;
   owner: string;
-  status: 'PENDING_APPROVAL' | 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'COMPLETED';
+  // CAW can return newer or raw Pact states before the frontend knows about them.
+  status: string;
   budget: Budget;
   vendor_whitelist: Vendor[];
   cooldown_hours: number;

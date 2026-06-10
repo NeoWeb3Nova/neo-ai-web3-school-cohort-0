@@ -4,6 +4,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 os.environ.setdefault("CAW_MODE", "mock")
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 
 import main
 from models import CardResponse
+from real_caw_client import RealCAWClient
 
 
 CARD_WITH_NULL_EXPIRY = {
@@ -71,3 +73,13 @@ def test_get_card_accepts_caw_pact_with_null_expiry():
 
     assert response.status_code == 200
     assert response.json()["expires_at"] == ""
+
+
+def test_real_caw_statuses_are_normalized_for_frontend():
+    client = RealCAWClient.__new__(RealCAWClient)
+
+    assert client._extract_pact_status({"status": "APPROVED"}) == "ACTIVE"
+    assert client._extract_pact_status({"status": "PENDING"}) == "PENDING_APPROVAL"
+    assert client._extract_pact_status({"state": "approval_pending"}) == "PENDING_APPROVAL"
+    assert client._extract_pact_status({"pact_status": "WITHDRAWN"}) == "REVOKED"
+    assert client._extract_pact_status({"status": None}) == "UNKNOWN"

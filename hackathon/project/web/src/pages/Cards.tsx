@@ -139,7 +139,9 @@ export default function Cards() {
     }
   };
 
-  const statusConfig: Record<string, { color: string; bg: string; icon: React.ReactNode; label: string }> = {
+  type StatusConfig = { color: string; bg: string; icon: React.ReactNode; label: string };
+
+  const statusConfig: Record<string, StatusConfig> = {
     ACTIVE: {
       color: 'text-accent-patina',
       bg: 'bg-accent-patina/10',
@@ -152,10 +154,28 @@ export default function Cards() {
       icon: <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />,
       label: t('common.pending'),
     },
+    PENDING: {
+      color: 'text-accent-amber',
+      bg: 'bg-accent-amber/10',
+      icon: <Clock className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      label: t('common.pending'),
+    },
+    COMPLETED: {
+      color: 'text-accent-patina',
+      bg: 'bg-accent-patina/10',
+      icon: <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      label: t('common.completed'),
+    },
     REVOKED: {
       color: 'text-accent-coral',
       bg: 'bg-accent-coral/10',
       icon: <Lock className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      label: t('common.revoked'),
+    },
+    REJECTED: {
+      color: 'text-accent-coral',
+      bg: 'bg-accent-coral/10',
+      icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
       label: t('common.revoked'),
     },
     EXPIRED: {
@@ -164,6 +184,20 @@ export default function Cards() {
       icon: <XCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
       label: t('common.expired'),
     },
+    UNKNOWN: {
+      color: 'text-text-muted',
+      bg: 'bg-bg-hover',
+      icon: <AlertCircle className="w-3.5 h-3.5" strokeWidth={1.5} />,
+      label: t('common.unknown'),
+    },
+  };
+
+  const getStatusConfig = (rawStatus: string): StatusConfig => {
+    const normalized = String(rawStatus || 'UNKNOWN').toUpperCase();
+    return statusConfig[normalized] ?? {
+      ...statusConfig.UNKNOWN,
+      label: `${t('common.unknown')} (${rawStatus || '-'})`,
+    };
   };
 
   const progressPct = (spent: number, max: number) =>
@@ -430,7 +464,7 @@ export default function Cards() {
       {/* Cards Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
         {cards.map((card) => {
-          const status = statusConfig[card.status];
+          const status = getStatusConfig(card.status);
           const isExpanded = expandedCard === card.card_id;
           const pct = progressPct(card.budget.spent, card.budget.monthly_max);
 

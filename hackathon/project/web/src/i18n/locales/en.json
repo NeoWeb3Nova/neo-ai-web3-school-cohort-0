@@ -27,6 +27,7 @@
     "active": "Active",
     "pending": "Pending",
     "revoked": "Revoked",
+    "completed": "Completed",
     "expired": "Expired",
     "approved": "Approved",
     "denied": "Denied",

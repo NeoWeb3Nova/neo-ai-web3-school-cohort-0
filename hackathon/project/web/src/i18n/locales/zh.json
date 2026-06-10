@@ -27,6 +27,7 @@
     "active": "活跃",
     "pending": "待审批",
     "revoked": "已撤销",
+    "completed": "已完成",
     "expired": "已过期",
     "approved": "已通过",
     "denied": "已拒绝",
