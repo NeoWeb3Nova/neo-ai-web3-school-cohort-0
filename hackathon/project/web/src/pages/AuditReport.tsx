@@ -213,8 +213,8 @@ export default function AuditReport() {
             <Calendar className="w-4 h-4 text-text-muted" strokeWidth={1.5} />
             {t('audit.dailyActivity')}
           </h3>
-          <div className="h-52 lg:h-56">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-52 lg:h-56 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 224 }}>
               <AreaChart data={spendingTrend}>
                 <defs>
                   <linearGradient id="colorApproved" x1="0" y1="0" x2="0" y2="1">
@@ -237,8 +237,8 @@ export default function AuditReport() {
         {/* By Vendor */}
         <div className="glass-card rounded-im p-4 lg:p-5">
           <h3 className="text-sm font-semibold text-text-primary mb-4 font-display">{t('audit.spendingByVendor')}</h3>
-          <div className="h-52 lg:h-56">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-52 lg:h-56 min-w-0">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 224 }}>
               <BarChart data={byVendor} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} horizontal={false} />
                 <XAxis type="number" tick={{ fill: CHART.axis, fontSize: 11 }} axisLine={false} tickLine={false} />
