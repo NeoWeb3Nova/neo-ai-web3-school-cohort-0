@@ -390,7 +390,7 @@ export default function Cards() {
                 return (
                   <label
                     key={v.name}
-                    className={`block p-3 rounded-im text-xs border cursor-pointer transition-colors ${
+                    className={`block p-2.5 rounded-im text-xs border cursor-pointer transition-colors ${
                       checked
                         ? 'bg-accent-patina/10 border-accent-patina/40 text-text-primary'
                         : 'bg-bg-primary border-border-default text-text-secondary hover:border-border-hover'
@@ -410,11 +410,17 @@ export default function Cards() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-semibold text-text-primary truncate">{v.name}</p>
-                        <p className="mt-1 text-text-muted line-clamp-2">{v.description || v.category}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-text-muted">
+                          <span>{v.category || 'provider'}</span>
+                          <span>·</span>
+                          <span>{v.chain || 'Base'}</span>
+                          <span>·</span>
+                          <span>{v.pricing_usdc ? `$${v.pricing_usdc}/call` : 'custom'}</span>
+                        </div>
                       </div>
                       <div className="shrink-0 flex flex-col items-end gap-1">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] ${verified ? 'bg-accent-patina/10 text-accent-patina' : 'bg-accent-amber/10 text-accent-amber'}`}>
-                          {verified ? 'ERC-8004 verified' : 'manual trust'}
+                          {verified ? 'ERC-8004' : 'manual'}
                         </span>
                         {verified && (
                           <button
@@ -426,17 +432,10 @@ export default function Cards() {
                             }}
                             className="text-[10px] text-accent-gold hover:underline"
                           >
-                            View 8004 info
+                            Details
                           </button>
                         )}
                       </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-text-muted">
-                      <span>Chain: {v.chain || 'n/a'}</span>
-                      <span>Price: {v.pricing_usdc ? `$${v.pricing_usdc}/call` : 'custom'}</span>
-                      <span className="col-span-2 truncate">x402: {v.x402_url || 'legacy provider'}</span>
-                      <span className="col-span-2 truncate">Payee: {v.address}</span>
-                      {v.erc8004_agent_id && <span className="col-span-2 text-accent-gold truncate">Identity: {v.erc8004_agent_id}</span>}
                     </div>
                   </label>
                 );
@@ -717,28 +716,26 @@ export default function Cards() {
                           className="p-2.5 rounded-md bg-accent-slate/10 text-xs border border-accent-slate/20"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-text-primary">{v.name}</span>
+                            <div className="min-w-0">
+                              <span className="font-medium text-text-primary truncate block">{v.name}</span>
+                              <p className="mt-1 text-[10px] text-text-muted truncate">
+                                {v.category} · {v.chain || 'n/a'}{v.pricing_usdc ? ` · $${v.pricing_usdc}/call` : ''}
+                              </p>
+                            </div>
                             {v.erc8004_agent_id ? (
-                              <div className="flex flex-col items-end gap-1">
-                                <span className="text-[10px] text-accent-patina">ERC-8004 verified</span>
+                              <div className="shrink-0 flex flex-col items-end gap-1">
+                                <span className="text-[10px] text-accent-patina">ERC-8004</span>
                                 <button
                                   type="button"
                                   onClick={() => setErc8004DetailsVendor(v)}
                                   className="text-[10px] text-accent-gold hover:underline"
                                 >
-                                  View 8004 info
+                                  Details
                                 </button>
                               </div>
                             ) : (
-                              <span className="text-[10px] text-accent-amber">manual trust</span>
+                              <span className="shrink-0 text-[10px] text-accent-amber">manual</span>
                             )}
-                          </div>
-                          <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-text-muted">
-                            <span>Category: {v.category}</span>
-                            <span>Chain: {v.chain || 'n/a'}</span>
-                            {v.x402_url && <span className="truncate">x402: {v.x402_url}</span>}
-                            {v.pricing_usdc && <span>Price: ${v.pricing_usdc}/call</span>}
-                            {v.erc8004_agent_id && <span className="sm:col-span-2 text-accent-gold truncate">Identity: {v.erc8004_agent_id}</span>}
                           </div>
                         </div>
                       ))}
