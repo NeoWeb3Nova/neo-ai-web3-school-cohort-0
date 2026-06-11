@@ -80,6 +80,18 @@ export type X402Provider = {
   source: string;
   erc8004_agent_id?: string | null;
   erc8004_registry_url?: string | null;
+  erc8004_name?: string | null;
+  erc8004_description?: string | null;
+  average_score?: number | null;
+  total_feedback?: number | null;
+  overall_score?: number | null;
+  stars?: number | null;
+  health_score?: number | null;
+  rank?: number | null;
+  network_rank?: number | null;
+  is_verified?: boolean | null;
+  token_id?: string | null;
+  contract_address?: string | null;
 };
 
 export type ERC8004Agent = {
@@ -94,6 +106,15 @@ export type ERC8004Agent = {
   x402_enabled: boolean;
   registry_url: string;
   source: string;
+  description?: string | null;
+  average_score?: number | null;
+  health_score?: number | null;
+  rank?: number | null;
+  network_rank?: number | null;
+  is_verified?: boolean | null;
+  contract_address?: string | null;
+  token_id?: string | null;
+  chain_id?: number | null;
 };
 
 export const cawApi = {

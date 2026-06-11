@@ -9,6 +9,10 @@ repeatable allowlist shape for local mock/CAW policy tests.
 
 from __future__ import annotations
 
+import json
+import time
+import urllib.parse
+import urllib.request
 from typing import Any, Dict, List
 
 
@@ -306,8 +310,162 @@ MARKETPLACE_CONTEXT: Dict[str, Any] = {
 }
 
 
+CHAIN_NAMES: Dict[int, str] = {
+    1: "Ethereum",
+    10: "Optimism",
+    56: "BNB Smart Chain",
+    100: "Gnosis",
+    137: "Polygon",
+    196: "X Layer",
+    8453: "Base",
+    84532: "Base Sepolia",
+    42161: "Arbitrum",
+    43113: "Avalanche Fuji",
+    43114: "Avalanche",
+    44787: "Celo Alfajores",
+    45056: "Autonomys Nova",
+    11155111: "Sepolia",
+}
+
+_LIVE_ERC8004_CACHE: Dict[str, Any] = {"expires_at": 0.0, "agents": []}
+_LIVE_ERC8004_TTL_SECONDS = 300
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _registry_url(agent: Dict[str, Any]) -> str:
+    chain = agent.get("chain_id")
+    token_id = agent.get("token_id")
+    if chain and token_id:
+        return f"https://8004scan.io/agents/{chain}/{token_id}"
+    agent_id = urllib.parse.quote(str(agent.get("agent_id", "")))
+    return f"https://8004scan.io/agents?search={agent_id}"
+
+
+def _live_8004_get(path: str, timeout: int = 10) -> Dict[str, Any]:
+    url = f"https://8004scan.io/api/v1/public{path}"
+    req = urllib.request.Request(url, headers={"User-Agent": "opc-agent-treasury/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _agent_to_erc8004(agent: Dict[str, Any], source: str) -> Dict[str, Any]:
+    chain_id = _safe_int(agent.get("chain_id"), 0)
+    scores = agent.get("scores") or {}
+    service = "CUSTOM"
+    services = agent.get("services")
+    categories = agent.get("categories") or []
+    if isinstance(services, list) and services:
+        first = services[0]
+        service = str(first.get("name") if isinstance(first, dict) else first)
+    elif categories:
+        service = str(categories[0])
+    elif agent.get("agent_type"):
+        service = str(agent.get("agent_type"))
+    return {
+        "agent_id": str(agent.get("agent_id") or ""),
+        "name": str(agent.get("name") or "Unnamed ERC-8004 Agent"),
+        "chain": CHAIN_NAMES.get(chain_id, str(chain_id or agent.get("chain_type") or "Unknown")),
+        "service": service,
+        "owner": str(agent.get("agent_wallet") or agent.get("owner_address") or agent.get("creator_address") or ""),
+        "score": _safe_float(agent.get("total_score"), 0.0),
+        "feedback": _safe_int(agent.get("total_feedbacks"), 0),
+        "stars": _safe_int(agent.get("star_count"), 0),
+        "x402_enabled": bool(agent.get("x402_supported")),
+        "registry_url": _registry_url(agent),
+        "source": source,
+        "description": agent.get("description"),
+        "average_score": _safe_float(agent.get("average_score"), 0.0),
+        "health_score": _safe_float(agent.get("health_score") or scores.get("health_score"), 0.0),
+        "rank": agent.get("rank") or scores.get("rank"),
+        "network_rank": agent.get("network_rank") or scores.get("chain_rank"),
+        "is_verified": bool(agent.get("is_verified")),
+        "contract_address": agent.get("contract_address"),
+        "token_id": agent.get("token_id"),
+        "chain_id": chain_id or None,
+    }
+
+
+def _fetch_live_erc8004_agents(limit: int = 12) -> List[Dict[str, Any]]:
+    now = time.time()
+    if _LIVE_ERC8004_CACHE["expires_at"] > now:
+        return [dict(a) for a in _LIVE_ERC8004_CACHE["agents"]]
+    try:
+        payload = _live_8004_get(f"/agents?x402_supported=true&limit={limit}")
+        agents = [
+            _agent_to_erc8004(agent, "8004scan:api-live")
+            for agent in payload.get("data", [])
+            if agent.get("agent_id")
+        ]
+        if agents:
+            _LIVE_ERC8004_CACHE["agents"] = agents
+            _LIVE_ERC8004_CACHE["expires_at"] = now + _LIVE_ERC8004_TTL_SECONDS
+            return [dict(a) for a in agents]
+    except Exception:
+        pass
+    return [dict(a) for a in ERC8004_AGENTS]
+
+
+def search_erc8004_agents(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    safe_query = urllib.parse.quote_plus(query.strip())
+    if not safe_query:
+        return _fetch_live_erc8004_agents(limit=limit)
+    try:
+        payload = _live_8004_get(f"/agents/search?q={safe_query}&limit={limit}")
+        agents = [
+            _agent_to_erc8004(agent, "8004scan:api-search")
+            for agent in payload.get("data", [])
+            if agent.get("agent_id")
+        ]
+        if agents:
+            return agents
+    except Exception:
+        pass
+    return [a for a in ERC8004_AGENTS if query.lower() in str(a.get("name", "")).lower()][:limit]
+
+
 def list_x402_providers() -> List[Dict[str, Any]]:
-    return [dict(p) for p in X402_PROVIDERS]
+    providers = [dict(p) for p in X402_PROVIDERS]
+    live_agents = _fetch_live_erc8004_agents(limit=len(providers))
+    for provider, live_agent in zip(providers, live_agents):
+        provider.update(
+            {
+                "address": live_agent.get("owner") or provider["address"],
+                "chain": live_agent.get("chain") or provider["chain"],
+                "source": live_agent.get("source") or provider["source"],
+                "erc8004_agent_id": live_agent.get("agent_id"),
+                "erc8004_registry_url": live_agent.get("registry_url"),
+                "erc8004_name": live_agent.get("name"),
+                "erc8004_description": live_agent.get("description"),
+                "average_score": live_agent.get("average_score"),
+                "total_feedback": live_agent.get("feedback"),
+                "overall_score": live_agent.get("score"),
+                "stars": live_agent.get("stars"),
+                "health_score": live_agent.get("health_score"),
+                "rank": live_agent.get("rank"),
+                "network_rank": live_agent.get("network_rank"),
+                "is_verified": live_agent.get("is_verified"),
+                "token_id": live_agent.get("token_id"),
+                "contract_address": live_agent.get("contract_address"),
+            }
+        )
+    return providers
 
 
 def get_vendor_registry() -> Dict[str, str]:
@@ -315,7 +473,7 @@ def get_vendor_registry() -> Dict[str, str]:
 
 
 def list_erc8004_agents() -> List[Dict[str, Any]]:
-    return [dict(a) for a in ERC8004_AGENTS]
+    return _fetch_live_erc8004_agents()
 
 
 def list_digital_employees() -> List[Dict[str, Any]]:

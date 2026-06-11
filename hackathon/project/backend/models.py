@@ -227,6 +227,18 @@ class X402Provider(BaseModel):
     source: str
     erc8004_agent_id: Optional[str] = None
     erc8004_registry_url: Optional[str] = None
+    erc8004_name: Optional[str] = None
+    erc8004_description: Optional[str] = None
+    average_score: Optional[float] = None
+    total_feedback: Optional[int] = None
+    overall_score: Optional[float] = None
+    stars: Optional[int] = None
+    health_score: Optional[float] = None
+    rank: Optional[int] = None
+    network_rank: Optional[int] = None
+    is_verified: Optional[bool] = None
+    token_id: Optional[str] = None
+    contract_address: Optional[str] = None
 
 
 class ERC8004Agent(BaseModel):
@@ -235,12 +247,21 @@ class ERC8004Agent(BaseModel):
     chain: str
     service: str
     owner: str
-    score: int
+    score: float
     feedback: int
     stars: int
     x402_enabled: bool
     registry_url: str
     source: str
+    description: Optional[str] = None
+    average_score: Optional[float] = None
+    health_score: Optional[float] = None
+    rank: Optional[int] = None
+    network_rank: Optional[int] = None
+    is_verified: Optional[bool] = None
+    contract_address: Optional[str] = None
+    token_id: Optional[str] = None
+    chain_id: Optional[int] = None
 
 
 class MarketplaceContextResponse(BaseModel):

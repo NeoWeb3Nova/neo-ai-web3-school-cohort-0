@@ -44,6 +44,18 @@ class Vendor:
     source: str = ""
     erc8004_agent_id: str = ""
     erc8004_registry_url: str = ""
+    erc8004_name: str = ""
+    erc8004_description: str = ""
+    average_score: Optional[float] = None
+    total_feedback: Optional[int] = None
+    overall_score: Optional[float] = None
+    stars: Optional[int] = None
+    health_score: Optional[float] = None
+    rank: Optional[int] = None
+    network_rank: Optional[int] = None
+    is_verified: Optional[bool] = None
+    token_id: str = ""
+    contract_address: str = ""
 
 
 @dataclass

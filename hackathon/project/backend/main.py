@@ -57,6 +57,7 @@ from service_registry import (
     list_digital_employees,
     list_erc8004_agents,
     list_x402_providers,
+    search_erc8004_agents,
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -158,6 +159,13 @@ def x402_providers():
 def erc8004_agents():
     """Recent ERC-8004 agent examples from 8004scan for demo discovery."""
     return [ERC8004Agent(**a) for a in list_erc8004_agents()]
+
+
+@app.get("/erc8004/agents/search", response_model=List[ERC8004Agent])
+def erc8004_agent_search(q: str, limit: int = 5):
+    """Live ERC-8004 agent search through the public 8004scan API."""
+    capped_limit = max(1, min(limit, 10))
+    return [ERC8004Agent(**a) for a in search_erc8004_agents(q, capped_limit)]
 
 
 @app.get("/marketplace/context", response_model=MarketplaceContextResponse)

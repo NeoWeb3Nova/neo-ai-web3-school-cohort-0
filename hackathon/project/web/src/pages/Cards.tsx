@@ -232,18 +232,31 @@ export default function Cards() {
     Math.min((spent / max) * 100, 100);
 
   const renderErc8004CoreInfo = (vendor: Vendor) => {
-    const [registryChain, registryAgentId] = (vendor.erc8004_agent_id || '').split(':');
+    const agentIdentity = vendor.erc8004_agent_id || '';
+    const agentParts = agentIdentity.split(':');
+    const registryChain = agentParts.length >= 3 ? agentParts[0] : '';
+    const registryAgentId = agentParts.length >= 3 ? agentParts[2] : agentParts[1] || agentIdentity;
+    const displayName = vendor.erc8004_name || vendor.name;
+    const displayDescription = vendor.erc8004_description || vendor.description || 'ERC-8004 registered x402 service provider';
+    const averageScore = vendor.average_score ?? 0;
+    const totalFeedback = vendor.total_feedback ?? 0;
+    const overallScore = vendor.overall_score ?? 0;
+    const healthScore = vendor.health_score ?? null;
     return (
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-lg font-semibold text-text-primary font-display truncate">{vendor.name}</p>
+            <p className="text-lg font-semibold text-text-primary font-display truncate">{displayName}</p>
             <p className="mt-1 text-xs text-text-secondary leading-relaxed">
-              {vendor.description || 'ERC-8004 registered x402 service provider'}
+              {displayDescription}
             </p>
           </div>
-          <span className="shrink-0 px-2 py-1 rounded-full text-[10px] bg-accent-patina/10 text-accent-patina border border-accent-patina/20">
-            Active
+          <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] border ${
+            vendor.is_verified
+              ? 'bg-accent-patina/10 text-accent-patina border-accent-patina/20'
+              : 'bg-accent-amber/10 text-accent-amber border-accent-amber/20'
+          }`}>
+            {vendor.is_verified ? 'Verified' : 'Live Registry'}
           </span>
         </div>
 
@@ -251,17 +264,19 @@ export default function Cards() {
           <p className="text-[10px] uppercase tracking-[0.2em] text-accent-gold">Statistics Overview</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
             <div className="rounded-im border border-border-default p-2">
-              <p className="text-sm font-semibold text-text-primary">5.0/5.0</p>
+              <p className="text-sm font-semibold text-text-primary">{averageScore.toFixed(1)}/5.0</p>
               <p className="mt-0.5 text-[10px] text-text-muted">Average Score</p>
             </div>
             <div className="rounded-im border border-border-default p-2">
-              <p className="text-sm font-semibold text-text-primary">621</p>
+              <p className="text-sm font-semibold text-text-primary">{totalFeedback.toLocaleString()}</p>
               <p className="mt-0.5 text-[10px] text-text-muted">Total Feedback</p>
             </div>
             <div className="rounded-im border border-border-default p-2">
-              <p className="text-sm font-semibold text-text-primary">93.83</p>
+              <p className="text-sm font-semibold text-text-primary">{overallScore.toFixed(2)}</p>
               <p className="mt-0.5 text-[10px] text-text-muted">Overall Score</p>
-              <p className="mt-0.5 text-[10px] text-accent-patina">(99/100)</p>
+              {healthScore !== null && (
+                <p className="mt-0.5 text-[10px] text-accent-patina">Health {healthScore.toFixed(0)}/100</p>
+              )}
             </div>
           </div>
         </div>
