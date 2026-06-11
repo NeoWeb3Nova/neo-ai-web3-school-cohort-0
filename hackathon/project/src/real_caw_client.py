@@ -239,16 +239,15 @@ class RealCAWClient:
             f"budget ${monthly_budget}/month, tx limit ${single_tx_limit}"
         )
 
-        result = _sync(
-            self._client.submit_pact(
-                wallet_id=self.wallet_uuid,
-                intent=intent,
-                spec={
-                    "policies": policies,
-                    "completion_conditions": completion_conditions,
-                    "execution_plan": execution_plan,
-                },
-            )
+        pact_spec = {
+            "policies": policies,
+            "completion_conditions": completion_conditions,
+            "execution_plan": execution_plan,
+        }
+        result = self._submit_pact_via_http_or_fresh_sdk(
+            wallet_id=self.wallet_uuid,
+            intent=intent,
+            spec=pact_spec,
         )
 
         # 解析 pact_id（SDK 返回结构可能嵌套在 result 中）
@@ -435,6 +434,27 @@ class RealCAWClient:
 
         return [dict(c) for c in self._cards.values()]
 
+    def _submit_pact_via_http_or_fresh_sdk(self, wallet_id: str, intent: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a Pact without reusing the singleton SDK aiohttp session across FastAPI loops.
+
+        The singleton SDK client is still useful for some calls, but submit_pact from a
+        long-lived FastAPI process can hit aiohttp "Future attached to a different loop".
+        Prefer the synchronous REST endpoint; if that shape changes, fall back to a
+        fresh SDK client so any aiohttp connector is bound to the current call only.
+        """
+        payload = {"wallet_id": wallet_id, "intent": intent, "spec": spec}
+        try:
+            return self._http_post_json("/api/v1/pacts", payload)
+        except Exception as http_exc:
+            logger.warning("[CAW] HTTP submit_pact failed (%s), falling back to fresh SDK client", http_exc)
+            if WalletAPIClient is None:
+                raise
+            fresh_client = WalletAPIClient(base_url=self.base_url, api_key=self.api_key)
+            try:
+                return _sync(fresh_client.submit_pact(wallet_id=wallet_id, intent=intent, spec=spec))
+            except Exception as sdk_exc:
+                raise RuntimeError(f"submit_pact failed via HTTP and fresh SDK: HTTP={http_exc}; SDK={sdk_exc}") from sdk_exc
+
     def _fetch_pacts_via_http(self) -> List[Dict[str, Any]]:
         """使用同步 urllib 调用 CAW REST API 获取 Pact 列表。"""
         data = self._http_get_json(
@@ -564,6 +584,31 @@ class RealCAWClient:
         })
         with urllib.request.urlopen(req, timeout=15) as res:
             return json.loads(res.read().decode())
+
+    def _http_post_json(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """CAW REST POST helper. Avoids aiohttp event-loop reuse in FastAPI sync routes."""
+        import urllib.error
+        import urllib.request
+        import json
+
+        url = f"{self.base_url.rstrip('/')}{path}"
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "X-API-Key": self.api_key,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as res:
+                return json.loads(res.read().decode())
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")
+            raise RuntimeError(f"HTTP {exc.code} from CAW POST {path}: {detail}") from exc
 
     def _build_balance_response(
         self,

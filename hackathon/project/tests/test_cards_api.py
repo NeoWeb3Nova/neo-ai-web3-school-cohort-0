@@ -193,6 +193,39 @@ def test_real_caw_statuses_are_normalized_for_frontend():
     assert client._extract_pact_status({"status": None}) == "UNKNOWN"
 
 
+def test_real_caw_submit_pact_prefers_sync_http_and_avoids_reused_sdk_loop():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client.base_url = "https://api.example"
+    client.api_key = "caw_test"
+
+    class LoopPoisonedSDK:
+        def submit_pact(self, **kwargs):  # pragma: no cover - must not be called when HTTP succeeds
+            raise AssertionError("singleton SDK submit_pact should not be called when HTTP succeeds")
+
+    client._client = LoopPoisonedSDK()
+    captured = {}
+
+    def fake_http_post_json(path, payload):
+        captured["path"] = path
+        captured["payload"] = payload
+        return {"result": {"pact_id": "pact-http-create"}}
+
+    client._http_post_json = fake_http_post_json
+
+    result = client._submit_pact_via_http_or_fresh_sdk(
+        wallet_id="wallet-123",
+        intent="Issue spending card",
+        spec={"policies": [], "completion_conditions": []},
+    )
+
+    assert result["result"]["pact_id"] == "pact-http-create"
+    assert captured["path"] == "/api/v1/pacts"
+    assert captured["payload"]["wallet_id"] == "wallet-123"
+    assert captured["payload"]["intent"] == "Issue spending card"
+    assert captured["payload"]["spec"] == {"policies": [], "completion_conditions": []}
+
+
 def test_real_caw_list_cards_prefers_sync_http_and_avoids_sdk_loop():
     client = RealCAWClient.__new__(RealCAWClient)
     client.wallet_uuid = "wallet-123"

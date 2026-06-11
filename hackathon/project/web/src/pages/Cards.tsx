@@ -221,8 +221,9 @@ export default function Cards() {
       setManualProvider(EMPTY_MANUAL_PROVIDER);
       setManualProviderError('');
       setNewCardTouched({});
-    } catch {
-      alert(t('common.error'));
+    } catch (error) {
+      console.error('Create card failed', error);
+      alert(error instanceof Error ? error.message : t('common.error'));
     } finally {
       setActionLoading(null);
     }
