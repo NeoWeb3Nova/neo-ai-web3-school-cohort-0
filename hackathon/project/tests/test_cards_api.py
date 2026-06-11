@@ -11,8 +11,55 @@ os.environ.setdefault("CAW_MODE", "mock")
 from fastapi.testclient import TestClient
 
 import main
-from models import CardResponse, TransactionRecord
+import pytest
+from pydantic import ValidationError
+
+from models import CardResponse, CreateCardRequest, TransactionRecord
 from real_caw_client import RealCAWClient
+
+
+def test_create_card_request_accepts_manual_x402_provider_with_optional_metadata():
+    req = CreateCardRequest(
+        agent_name="Manual Provider Policy",
+        monthly_budget=100.0,
+        single_tx_limit=10.0,
+        vendor_whitelist=[
+            {
+                "name": "Manual Weather API",
+                "address": "0x1234567890abcdef1234567890abcdef12345678",
+                "x402_url": "https://weather.example.com/x402",
+                "chain": "BASE_ETH",
+                "category": "data",
+                "pricing_usdc": 0.02,
+                "description": "Optional operator note",
+                "source": "manual",
+            }
+        ],
+    )
+
+    provider = req.vendor_whitelist[0]
+    assert provider["source"] == "manual"
+    assert provider["category"] == "data"
+    assert provider["description"] == "Optional operator note"
+
+
+def test_create_card_request_rejects_manual_x402_provider_without_caw_core_fields():
+    base_payload = {
+        "agent_name": "Manual Provider Policy",
+        "monthly_budget": 100.0,
+        "single_tx_limit": 10.0,
+    }
+
+    for missing_field in ("name", "address", "x402_url", "chain"):
+        provider = {
+            "name": "Manual Weather API",
+            "address": "0x1234567890abcdef1234567890abcdef12345678",
+            "x402_url": "https://weather.example.com/x402",
+            "chain": "BASE_ETH",
+        }
+        provider.pop(missing_field)
+        with pytest.raises(ValidationError):
+            CreateCardRequest(**base_payload, vendor_whitelist=[provider])
 
 
 CARD_WITH_NULL_EXPIRY = {

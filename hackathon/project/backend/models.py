@@ -30,6 +30,39 @@ class CreateCardRequest(BaseModel):
     erc8004_agent_id: Optional[str] = None
     erc8004_registry_url: Optional[str] = None
 
+    @field_validator("vendor_whitelist", mode="before")
+    @classmethod
+    def validate_x402_provider_whitelist(cls, value: Any) -> List[Dict[str, Any]]:
+        """Normalize provider entries and require CAW-enforceable x402 core fields.
+
+        Core fields are the data CAW needs to build/enforce the payment policy:
+        display/service name, payee destination address, x402 endpoint, and chain.
+        UI metadata such as category, description, pricing, source, and ERC-8004
+        links remains optional.
+        """
+        if not isinstance(value, list) or not value:
+            raise ValueError("vendor_whitelist must contain at least one x402 provider")
+
+        required_fields = ("name", "address", "x402_url", "chain")
+        normalized: List[Dict[str, Any]] = []
+        for index, provider in enumerate(value):
+            if not isinstance(provider, dict):
+                raise ValueError(f"vendor_whitelist[{index}] must be an object")
+            item = dict(provider)
+            for field_name in required_fields:
+                field_value = item.get(field_name)
+                if not isinstance(field_value, str) or not field_value.strip():
+                    raise ValueError(
+                        f"vendor_whitelist[{index}].{field_name} is required for CAW x402 policy enforcement"
+                    )
+                item[field_name] = field_value.strip()
+            item.setdefault("category", "custom")
+            item.setdefault("description", "")
+            item.setdefault("pricing_usdc", 0.0)
+            item.setdefault("source", "manual")
+            normalized.append(item)
+        return normalized
+
 
 class CardResponse(BaseModel):
     card_id: str
