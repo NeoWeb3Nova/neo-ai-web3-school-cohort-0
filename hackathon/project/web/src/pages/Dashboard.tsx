@@ -11,6 +11,7 @@ import {
   Bot,
   Clock,
   ChevronRight,
+  RadioTower,
 } from 'lucide-react';
 import {
   BarChart,
@@ -48,10 +49,14 @@ export default function Dashboard() {
   const [liveTxs, setLiveTxs] = useState<typeof INITIAL_TRANSACTIONS | null>(null);
   const [liveSummary, setLiveSummary] = useState<typeof MONTHLY_SUMMARY | null>(null);
   const [walletBalance, setWalletBalance] = useState<WalletBalance | null>(null);
+  const [isSyncing, setIsSyncing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    const minSyncDisplay = new Promise((resolve) => window.setTimeout(resolve, 650));
+
     Promise.all([fetchDashboard(), fetchWalletBalance()])
       .then(([data, balance]) => {
         if (cancelled) return;
@@ -64,10 +69,17 @@ export default function Dashboard() {
       .catch((err) => {
         if (cancelled) return;
         console.warn('[Dashboard] Backend unreachable, using mock data:', err);
-        setError(t('common.offline'));
+        setError('common.offline');
+      })
+      .finally(() => {
+        minSyncDisplay.then(() => {
+          if (cancelled) return;
+          setIsSyncing(false);
+        });
       });
+
     return () => { cancelled = true; };
-  }, [t]);
+  }, []);
 
   const cards = liveCards ?? INITIAL_CARDS;
   const transactions = liveTxs ?? INITIAL_TRANSACTIONS;
@@ -147,9 +159,48 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {isSyncing && (
+        <div
+          className="glass-card-elevated relative overflow-hidden px-4 py-3 sm:px-5"
+          role="status"
+          aria-live="polite"
+          aria-label={t('dashboard.syncingTitle')}
+        >
+          <div className="sync-loader-sheen" />
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="sync-orb" aria-hidden="true">
+                <div className="sync-orb-ring" />
+                <RadioTower className="h-4 w-4" strokeWidth={1.7} />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-text-primary">
+                    {t('dashboard.syncingTitle')}
+                  </p>
+                  <span className="rounded-im border border-accent-patina/25 bg-accent-patina/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-patina">
+                    {t('dashboard.liveFeed')}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {t('dashboard.syncingDesc')}
+                </p>
+              </div>
+            </div>
+            <div className="sync-equalizer" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-im border border-accent-amber/30 bg-accent-amber/10 px-4 py-2 text-xs text-accent-amber">
-          {error}
+          {t(error)}
         </div>
       )}
 

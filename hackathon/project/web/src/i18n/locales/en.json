@@ -98,7 +98,10 @@
     "humanReview": "Human Review",
     "agent": "Agent",
     "budget": "Budget",
-    "spent": "Spent"
+    "spent": "Spent",
+    "syncingTitle": "Syncing treasury data",
+    "syncingDesc": "Demo data is visible while the live CAW ledger connects.",
+    "liveFeed": "Live feed"
   },
   "cards": {
     "title": "Agent Spending Cards",

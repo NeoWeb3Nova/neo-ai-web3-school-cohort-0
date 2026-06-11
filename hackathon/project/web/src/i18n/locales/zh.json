@@ -98,7 +98,10 @@
     "humanReview": "人工复审",
     "agent": "智能体",
     "budget": "预算",
-    "spent": "已支出"
+    "spent": "已支出",
+    "syncingTitle": "正在同步财库数据",
+    "syncingDesc": "实时 CAW 账本连接期间，先展示演示数据占位。",
+    "liveFeed": "实时链路"
   },
   "cards": {
     "title": "智能体权限卡",
