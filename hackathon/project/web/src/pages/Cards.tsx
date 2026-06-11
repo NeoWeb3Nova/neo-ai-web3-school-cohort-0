@@ -615,6 +615,11 @@ export default function Cards() {
                         {card.agent_name}
                       </h3>
                       <p className="text-xs text-text-muted mt-0.5">{card.card_id}</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {card.assigned_agent_name
+                          ? `${t('cards.assignedTo')}: ${card.assigned_agent_name}`
+                          : t('cards.notAssigned')}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">

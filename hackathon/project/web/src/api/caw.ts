@@ -1,7 +1,7 @@
 // OPC Agent Treasury — Backend API client
 // Talks to the FastAPI backend (default http://127.0.0.1:8000)
 
-import type { CardPact, Transaction, MonthlySummary } from '../data/mockData';
+import type { CardPact, DigitalEmployee, Transaction, MonthlySummary } from '../data/mockData';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
@@ -25,6 +25,9 @@ export type CreateCardPayload = {
   vendor_whitelist: Array<Record<string, any>>;
   cooldown_hours?: number;
   duration_days?: number;
+  agent_id?: string;
+  erc8004_agent_id?: string;
+  erc8004_registry_url?: string;
 };
 
 export type ApproveResponse = {
@@ -33,7 +36,21 @@ export type ApproveResponse = {
   api_key?: string | null;
 };
 
+export type AssignCardPayload = {
+  agent_id: string;
+  agent_name: string;
+};
+
+export type AssignCardResponse = {
+  card_id: string;
+  status: string;
+  assigned_agent_id: string;
+  assigned_agent_name: string;
+  assigned_at: string;
+};
+
 export type PaymentPayload = {
+  agent_id: string;
   card_id: string;
   vendor: string;
   amount: number;
@@ -83,6 +100,7 @@ export const cawApi = {
   health: () => api<{ status: string; caw_mode: string }>('/health'),
   listX402Providers: () => api<X402Provider[]>('/providers/x402'),
   listERC8004Agents: () => api<ERC8004Agent[]>('/erc8004/agents'),
+  listDigitalEmployees: () => api<DigitalEmployee[]>('/agents/digital-employees'),
   marketplaceContext: () => api<Record<string, any>>('/marketplace/context'),
 
   listCards: () => api<CardPact[]>('/cards'),
@@ -91,6 +109,8 @@ export const cawApi = {
     api<CardPact>('/cards', { method: 'POST', body: JSON.stringify(payload) }),
   approveCard: (cardId: string) =>
     api<ApproveResponse>(`/cards/${cardId}/approve`, { method: 'POST' }),
+  assignCard: (cardId: string, payload: AssignCardPayload) =>
+    api<AssignCardResponse>(`/cards/${cardId}/assign`, { method: 'POST', body: JSON.stringify(payload) }),
   revokeCard: (cardId: string) =>
     api<ApproveResponse>(`/cards/${cardId}/revoke`, { method: 'POST' }),
 

@@ -38,6 +38,8 @@ from models import (
     CreateCardRequest,
     CardResponse,
     ApproveResponse,
+    AssignCardRequest,
+    AssignCardResponse,
     PaymentRequest,
     PaymentResponse,
     TransactionRecord,
@@ -48,9 +50,11 @@ from models import (
     X402Provider,
     ERC8004Agent,
     MarketplaceContextResponse,
+    DigitalEmployee,
 )
 from service_registry import (
     get_marketplace_context,
+    list_digital_employees,
     list_erc8004_agents,
     list_x402_providers,
 )
@@ -162,6 +166,12 @@ def marketplace_context():
     return MarketplaceContextResponse(**get_marketplace_context())
 
 
+@app.get("/agents/digital-employees", response_model=List[DigitalEmployee])
+def digital_employees():
+    """OPC digital employees that can receive CAW policy cards."""
+    return [DigitalEmployee(**agent) for agent in list_digital_employees()]
+
+
 @app.get("/wallet/balance", response_model=WalletBalanceResponse)
 def wallet_balance():
 
@@ -187,6 +197,9 @@ def create_card(req: CreateCardRequest):
             vendor_whitelist=req.vendor_whitelist,
             cooldown_hours=req.cooldown_hours,
             duration_days=req.duration_days,
+            agent_id=req.agent_id,
+            erc8004_agent_id=req.erc8004_agent_id,
+            erc8004_registry_url=req.erc8004_registry_url,
         )
         card = _caw().get_card(card_id)
         return CardResponse(**card)
@@ -226,6 +239,20 @@ def approve_card(card_id: str, max_wait: int = 300):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@app.post("/cards/{card_id}/assign", response_model=AssignCardResponse)
+def assign_card(card_id: str, req: AssignCardRequest):
+    """Assign an ACTIVE permission card to one OPC digital employee."""
+    try:
+        result = _caw().assign_card(
+            card_id=card_id,
+            agent_id=req.agent_id,
+            agent_name=req.agent_name,
+        )
+        return AssignCardResponse(**result)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @app.post("/cards/{card_id}/revoke", response_model=ApproveResponse)
 def revoke_card(card_id: str):
     try:
@@ -249,8 +276,10 @@ def submit_payment(req: PaymentRequest):
         meta = req.metadata or {}
         if req.purpose:
             meta["purpose"] = req.purpose
+        meta["agent_id"] = req.agent_id
         result = _caw().submit_payment(
             card_id=req.card_id,
+            agent_id=req.agent_id,
             vendor=req.vendor,
             amount=req.amount,
             metadata=meta,
@@ -290,22 +319,24 @@ def run_attack(attack_id: str, req: AttackRequest):
     card_id = req.card_id
     meta = req.metadata or {}
     meta["trigger"] = attack_id
+    card = caw.get_card(card_id)
+    attack_agent_id = card.get("assigned_agent_id") or card.get("agent_id") or "attack-agent"
 
     if attack_id == "a1":
         # Prompt injection -> unknown vendor address
-        result = caw.submit_payment(card_id, "0xEvilHacker", 500.0, metadata=meta)
+        result = caw.submit_payment(card_id, "0xEvilHacker", 500.0, agent_id=attack_agent_id, metadata=meta)
     elif attack_id == "a2":
         # Overpriced request
-        result = caw.submit_payment(card_id, "Midjourney", 500.0, metadata=meta)
+        result = caw.submit_payment(card_id, "Midjourney", 500.0, agent_id=attack_agent_id, metadata=meta)
     elif attack_id == "a3":
         # Scope bypass -> unknown vendor
-        result = caw.submit_payment(card_id, "FakeCloudService", 25.0, metadata=meta)
+        result = caw.submit_payment(card_id, "FakeCloudService", 25.0, agent_id=attack_agent_id, metadata=meta)
     elif attack_id == "a4":
         # Budget exhaustion -> attempt to exceed budget
         # Fire multiple payments quickly; only the first few will pass
         results = []
         for i in range(10):
-            r = caw.submit_payment(card_id, "Midjourney", 30.0, metadata={**meta, "iteration": i + 1})
+            r = caw.submit_payment(card_id, "Midjourney", 30.0, agent_id=attack_agent_id, metadata={**meta, "iteration": i + 1})
             results.append(r)
             if r["status"] != "APPROVED":
                 break
@@ -314,7 +345,7 @@ def run_attack(attack_id: str, req: AttackRequest):
     elif attack_id == "a5":
         # Revoked card reuse
         caw.revoke_card(card_id)
-        result = caw.submit_payment(card_id, "OpenAI", 10.0, metadata=meta)
+        result = caw.submit_payment(card_id, "OpenAI", 10.0, agent_id=attack_agent_id, metadata=meta)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown attack_id: {attack_id}")
 

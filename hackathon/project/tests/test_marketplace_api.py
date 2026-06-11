@@ -68,3 +68,38 @@ def test_marketplace_context_documents_scanner_sources():
     assert payload["x402scan"]["source_url"] == "https://www.x402scan.com/resources"
     assert payload["erc8004"]["scan_url"] == "https://8004scan.io/agents"
     assert payload["erc8004"]["registry_total_agents"] > 300000
+
+
+def test_digital_employee_endpoint_models_opc_agent_directory():
+    client = TestClient(main.app)
+
+    response = client.get("/agents/digital-employees")
+
+    assert response.status_code == 200
+    employees = response.json()
+    codes = {agent["code"] for agent in employees}
+    assert {"Alpha", "Beta", "Nova", "Watt"}.issubset(codes)
+    nova = next(agent for agent in employees if agent["code"] == "Nova")
+    assert nova["agent_id"] == "agent-nova-ops"
+    assert nova["erc8004_agent_id"].startswith("base:")
+    assert nova["recommended_policy"]["monthly_budget"] > 0
+
+
+def test_mock_card_exposes_erc8004_trust_requirements():
+    caw = MockCAWClient()
+    provider = TestClient(main.app).get("/providers/x402").json()[0]
+
+    card_id = caw.create_card_pact(
+        agent_name="Nova",
+        monthly_budget=200,
+        single_tx_limit=50,
+        vendor_whitelist=[provider],
+        cooldown_hours=6,
+    )
+    card = caw.get_card(card_id)
+
+    requirements = card["trust_requirements"]
+    names = {item["registry"] for item in requirements}
+    assert names == {"Identity Registry", "Reputation Registry", "Validation Registry"}
+    assert next(item for item in requirements if item["registry"] == "Identity Registry")["required"] is True
+    assert next(item for item in requirements if item["registry"] == "Validation Registry")["protocol_name"] == "Validation Registry"

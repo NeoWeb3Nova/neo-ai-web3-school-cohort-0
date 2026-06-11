@@ -153,6 +153,9 @@ class RealCAWClient:
         cooldown_hours: int = 12,
         owner: Optional[str] = None,
         duration_days: int = 30,
+        agent_id: Optional[str] = None,
+        erc8004_agent_id: Optional[str] = None,
+        erc8004_registry_url: Optional[str] = None,
     ) -> str:
         """
         为 Agent 创建一个 Transfer Pact，映射原有 Card 概念。
@@ -221,7 +224,9 @@ class RealCAWClient:
             f"single-tx limit ${single_tx_limit}.\n\n"
             f"# Operations\n"
             f"- Transfer USDC to approved vendors on {_default_chain()}\n"
-            f"- Vendors: {', '.join(v['name'] for v in vendor_whitelist)}\n\n"
+            f"- Vendors: {', '.join(v['name'] for v in vendor_whitelist)}\n"
+            f"- ERC-8004 identity: {erc8004_agent_id or 'not provided'}\n"
+            f"- ERC-8004 registry: {erc8004_registry_url or 'not provided'}\n\n"
             f"# Risk Controls\n"
             f"- Per-tx cap: ${single_tx_limit}\n"
             f"- Monthly cap: ${monthly_budget}\n"
@@ -255,7 +260,11 @@ class RealCAWClient:
         self._cards[pact_id] = {
             "card_id": pact_id,
             "agent_name": agent_name,
-            "agent_id": f"agent-{agent_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}",
+            "card_name": agent_name,
+            "agent_id": agent_id or f"agent-{agent_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}",
+            "assigned_agent_id": "",
+            "assigned_agent_name": "",
+            "assigned_at": "",
             "owner": owner or self._owner,
             "status": "PENDING_APPROVAL",
             "budget": {
@@ -271,8 +280,8 @@ class RealCAWClient:
             "api_key": "",
             "x402_enabled": any(bool(v.get("x402_url")) for v in vendor_whitelist),
             "x402_url": next((v.get("x402_url") for v in vendor_whitelist if v.get("x402_url")), None),
-            "erc8004_agent_id": next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),
-            "erc8004_registry_url": next((v.get("erc8004_registry_url") for v in vendor_whitelist if v.get("erc8004_registry_url")), None),
+            "erc8004_agent_id": erc8004_agent_id or next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),
+            "erc8004_registry_url": erc8004_registry_url or next((v.get("erc8004_registry_url") for v in vendor_whitelist if v.get("erc8004_registry_url")), None),
         }
 
         self._log_audit("PACT_CREATED", pact_id, {
@@ -338,6 +347,35 @@ class RealCAWClient:
             "Please open the Cobo Agentic Wallet App and approve it manually, "
             "then call approve_card() again."
         )
+
+    def assign_card(self, card_id: str, agent_id: str, agent_name: str) -> Dict[str, Any]:
+        """Persist assignment locally; CAW remains lifecycle authority for the Pact."""
+        card = self._get_card_or_raise(card_id)
+        if card.get("status") != "ACTIVE":
+            raise ValueError(f"Card {card_id} must be ACTIVE before assignment (status={card.get('status')})")
+        if not agent_id.strip():
+            raise ValueError("agent_id is required")
+        if not agent_name.strip():
+            raise ValueError("agent_name is required")
+
+        now = datetime.now(timezone.utc).isoformat()
+        next_card = dict(card)
+        next_card["card_name"] = next_card.get("card_name") or next_card.get("agent_name") or card_id
+        next_card["assigned_agent_id"] = agent_id
+        next_card["assigned_agent_name"] = agent_name
+        next_card["assigned_at"] = now
+        self._cards[card_id] = next_card
+        self._log_audit("CARD_ASSIGNED", card_id, {
+            "assigned_agent_id": agent_id,
+            "assigned_agent_name": agent_name,
+        })
+        return {
+            "card_id": card_id,
+            "status": "ASSIGNED",
+            "assigned_agent_id": agent_id,
+            "assigned_agent_name": agent_name,
+            "assigned_at": now,
+        }
 
     def revoke_card(self, card_id: str) -> Dict[str, Any]:
         """吊销 Pact，立即失效。"""
@@ -552,6 +590,7 @@ class RealCAWClient:
         card_id: str,
         vendor: str,
         amount: float,
+        agent_id: str = "",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -567,7 +606,17 @@ class RealCAWClient:
         # ── Stage 1: Permission Check（本地前置校验）──
         if card["status"] != "ACTIVE":
             reason = f"PERMISSION_DENIED: card status is {card['status']}"
-            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        if not card.get("assigned_agent_id"):
+            reason = "PERMISSION_DENIED: card_not_assigned"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        if agent_id != card.get("assigned_agent_id"):
+            reason = f"PERMISSION_DENIED: agent_not_assigned ({agent_id} cannot use {card_id})"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
             return self._payment_result(tx, card, "DENIED", reason)
 
         if amount <= 0:
@@ -791,7 +840,11 @@ class RealCAWClient:
         merged = {**api_card}
         for key in (
             "agent_name",
+            "card_name",
             "agent_id",
+            "assigned_agent_id",
+            "assigned_agent_name",
+            "assigned_at",
             "budget",
             "vendor_whitelist",
             "cooldown_hours",
@@ -812,7 +865,7 @@ class RealCAWClient:
                     if local_names and all(name.endswith("...") for name in api_names if name):
                         merged[key] = local_value
                 continue
-            if key in ("agent_name", "agent_id") and local_value not in (None, ""):
+            if key in ("agent_name", "card_name", "agent_id", "assigned_agent_id", "assigned_agent_name", "assigned_at") and local_value not in (None, ""):
                 merged[key] = local_value
                 continue
             if local_value not in (None, "", [], {}) and api_value in (None, "", [], {}, 0, 0.0):
@@ -864,7 +917,7 @@ class RealCAWClient:
         tx = {
             "tx_id": tx_id,
             "card_id": card["card_id"],
-            "agent_id": card["agent_id"],
+            "agent_id": card.get("assigned_agent_id") or card["agent_id"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "vendor": vendor,
             "vendor_address": vendor_addr,
@@ -951,7 +1004,11 @@ class RealCAWClient:
         return {
             "card_id": pid,
             "agent_name": pact.get("intent", "Unknown Agent"),
+            "card_name": pact.get("intent", "Unknown Agent"),
             "agent_id": f"agent-{pid}",
+            "assigned_agent_id": "",
+            "assigned_agent_name": "",
+            "assigned_at": "",
             "owner": self._owner,
             "status": self._extract_pact_status(pact),
             "budget": {

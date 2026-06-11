@@ -153,6 +153,121 @@ ERC8004_AGENTS: List[Dict[str, Any]] = [
     },
 ]
 
+DIGITAL_EMPLOYEES: List[Dict[str, Any]] = [
+    {
+        "agent_id": "agent-alpha-research",
+        "code": "Alpha",
+        "name": "Alpha Research Agent",
+        "role": "Market research and paid data gathering",
+        "risk_tier": "medium",
+        "erc8004_agent_id": "base:opc-alpha-research",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-alpha-research",
+        "recommended_policy": {"monthly_budget": 300, "single_tx_limit": 40, "cooldown_hours": 4},
+        "capabilities": ["market research", "x402 data APIs", "protocol monitoring"],
+    },
+    {
+        "agent_id": "agent-beta-growth",
+        "code": "Beta",
+        "name": "Beta Growth Agent",
+        "role": "Distribution and paid growth experiments",
+        "risk_tier": "high",
+        "erc8004_agent_id": "base:opc-beta-growth",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-beta-growth",
+        "recommended_policy": {"monthly_budget": 800, "single_tx_limit": 120, "cooldown_hours": 8},
+        "capabilities": ["campaign testing", "ads APIs", "audience enrichment"],
+    },
+    {
+        "agent_id": "agent-watt-infra",
+        "code": "Watt",
+        "name": "Watt Infrastructure Agent",
+        "role": "Infrastructure, RPC and deployment utilities",
+        "risk_tier": "low",
+        "erc8004_agent_id": "base:opc-watt-infra",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-watt-infra",
+        "recommended_policy": {"monthly_budget": 250, "single_tx_limit": 25, "cooldown_hours": 2},
+        "capabilities": ["RPC access", "deployment checks", "infra monitoring"],
+    },
+    {
+        "agent_id": "agent-vega-research",
+        "code": "Vega",
+        "name": "Vega Research Agent",
+        "role": "Market and protocol research",
+        "risk_tier": "medium",
+        "erc8004_agent_id": "base:opc-vega-research",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-vega-research",
+        "recommended_policy": {"monthly_budget": 300, "single_tx_limit": 40, "cooldown_hours": 4},
+        "capabilities": ["web research", "x402 data APIs", "protocol monitoring"],
+    },
+    {
+        "agent_id": "agent-lyra-growth",
+        "code": "Lyra",
+        "name": "Lyra Growth Agent",
+        "role": "Distribution and paid growth experiments",
+        "risk_tier": "high",
+        "erc8004_agent_id": "base:opc-lyra-growth",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-lyra-growth",
+        "recommended_policy": {"monthly_budget": 800, "single_tx_limit": 120, "cooldown_hours": 8},
+        "capabilities": ["campaign testing", "ads APIs", "audience enrichment"],
+    },
+    {
+        "agent_id": "agent-orion-ops",
+        "code": "Orion",
+        "name": "Orion Operations Agent",
+        "role": "OPC operations, procurement and payment orchestration",
+        "risk_tier": "medium",
+        "erc8004_agent_id": "base:opc-orion-ops",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-orion-ops",
+        "recommended_policy": {"monthly_budget": 500, "single_tx_limit": 75, "cooldown_hours": 6},
+        "capabilities": ["supplier calls", "x402 payment routing", "audit follow-up"],
+    },
+    {
+        "agent_id": "agent-atlas-infra",
+        "code": "Atlas",
+        "name": "Atlas Infrastructure Agent",
+        "role": "Infrastructure, RPC and deployment utilities",
+        "risk_tier": "low",
+        "erc8004_agent_id": "base:opc-atlas-infra",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-atlas-infra",
+        "recommended_policy": {"monthly_budget": 250, "single_tx_limit": 25, "cooldown_hours": 2},
+        "capabilities": ["RPC access", "deployment checks", "infra monitoring"],
+    },
+    {
+        "agent_id": "agent-nova-ops",
+        "code": "Nova",
+        "name": "Nova Operations Agent",
+        "role": "Cashflow, reconciliation and exception review",
+        "risk_tier": "medium",
+        "erc8004_agent_id": "base:opc-nova-ops",
+        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-nova-ops",
+        "recommended_policy": {"monthly_budget": 400, "single_tx_limit": 60, "cooldown_hours": 6},
+        "capabilities": ["reconciliation", "budget tracking", "exception triage"],
+    },
+]
+
+TRUST_REQUIREMENTS: List[Dict[str, Any]] = [
+    {
+        "registry": "Identity Registry",
+        "protocol_name": "Identity Registry",
+        "required": True,
+        "status": "required",
+        "description": "ERC-721 based agent identity; proves the provider or employee is a discoverable agent principal.",
+    },
+    {
+        "registry": "Reputation Registry",
+        "protocol_name": "Reputation Registry",
+        "required": False,
+        "status": "minimum-score",
+        "description": "Feedback and reputation signals influence limits, automation and human-review thresholds.",
+    },
+    {
+        "registry": "Validation Registry",
+        "protocol_name": "Validation Registry",
+        "required": False,
+        "status": "required-for-high-risk",
+        "description": "Independent validation of agent/service outputs; protocol-correct name is Validation Registry, not Evaluation Registry.",
+    },
+]
+
 MARKETPLACE_CONTEXT: Dict[str, Any] = {
     "x402scan": {
         "source_url": "https://www.x402scan.com/resources",
@@ -201,6 +316,14 @@ def get_vendor_registry() -> Dict[str, str]:
 
 def list_erc8004_agents() -> List[Dict[str, Any]]:
     return [dict(a) for a in ERC8004_AGENTS]
+
+
+def list_digital_employees() -> List[Dict[str, Any]]:
+    return [dict(a) for a in DIGITAL_EMPLOYEES]
+
+
+def get_trust_requirements() -> List[Dict[str, Any]]:
+    return [dict(r) for r in TRUST_REQUIREMENTS]
 
 
 def get_marketplace_context() -> Dict[str, Any]:

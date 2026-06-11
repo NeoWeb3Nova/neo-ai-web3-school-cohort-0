@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Bot,
   Send,
   CheckCircle,
   XCircle,
@@ -14,8 +13,10 @@ import {
   AlertCircle,
   RefreshCw,
   CreditCard,
+  Shield,
 } from 'lucide-react';
-import { type CardPact, type Transaction } from '../data/mockData';
+import { ERC8004_TRUST_REQUIREMENTS, DIGITAL_EMPLOYEES, type CardPact, type DigitalEmployee, type Transaction } from '../data/mockData';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 import { cawApi, type PaymentResponse } from '../api/caw';
 import { getCardStatusConfig, normalizeCardStatus } from '../utils/cardStatus';
 
@@ -26,13 +27,13 @@ interface PaymentStep {
   detail?: string;
 }
 
-const emptySteps = (t: (key: string) => string): PaymentStep[] => [
-  { id: 's1', label: t('agent.permissionCheck'), status: 'pending' },
-  { id: 's2', label: t('agent.budgetValidation'), status: 'pending' },
-  { id: 's3', label: t('agent.vendorWhitelist'), status: 'pending' },
-  { id: 's4', label: t('agent.timeWindow'), status: 'pending' },
-  { id: 's5', label: t('agent.cooldownPeriod'), status: 'pending' },
-  { id: 's6', label: t('agent.anomalyDetection'), status: 'pending' },
+const emptySteps = (): PaymentStep[] => [
+  { id: 's1', label: 'x402 payment challenge received', status: 'pending' },
+  { id: 's2', label: 'CAW policy card permission check', status: 'pending' },
+  { id: 's3', label: 'ERC-8004 Identity Registry check', status: 'pending' },
+  { id: 's4', label: 'ERC-8004 Reputation Registry threshold', status: 'pending' },
+  { id: 's5', label: 'ERC-8004 Validation Registry requirement', status: 'pending' },
+  { id: 's6', label: 'Budget, signature and audit record', status: 'pending' },
 ];
 
 function formatTime(ts: string): string {
@@ -45,8 +46,11 @@ export default function AgentConsole() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedCardId = searchParams.get('card_id') || '';
   const [cards, setCards] = useState<CardPact[]>([]);
+  const [employees, setEmployees] = useState<DigitalEmployee[]>(DIGITAL_EMPLOYEES);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedCard, setSelectedCard] = useState(searchParams.get('card_id') || '');
+  const [assignmentCardId, setAssignmentCardId] = useState(searchParams.get('card_id') || '');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(DIGITAL_EMPLOYEES[0]?.agent_id || '');
   const [vendor, setVendor] = useState('');
   const [amount, setAmount] = useState('10');
   const [purpose, setPurpose] = useState('x402 pay-per-call request');
@@ -54,6 +58,7 @@ export default function AgentConsole() {
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [result, setResult] = useState<{
     status: 'APPROVED' | 'DENIED' | 'PENDING_APPROVAL';
     reason: string;
@@ -65,21 +70,40 @@ export default function AgentConsole() {
     () => cards.filter((c) => normalizeCardStatus(c.status) === 'ACTIVE'),
     [cards]
   );
-  const selectedCardId = selectedCard || requestedCardId;
-  const card = activeCards.find((c) => c.card_id === selectedCardId) || activeCards[0] || null;
-  const cardStatus = getCardStatusConfig(card?.status, t);
+  const selectedEmployee = employees.find((employee) => employee.agent_id === selectedEmployeeId) || employees[0] || null;
+  const cardsForSelectedEmployee = useMemo(
+    () => activeCards.filter((c) => c.assigned_agent_id === selectedEmployeeId),
+    [activeCards, selectedEmployeeId]
+  );
+  const assignableCards = useMemo(
+    () => activeCards.filter((c) => !c.assigned_agent_id || c.assigned_agent_id === selectedEmployeeId),
+    [activeCards, selectedEmployeeId]
+  );
+  const selectedCardId = selectedCard || requestedCardId || cardsForSelectedEmployee[0]?.card_id || '';
+  const card = cardsForSelectedEmployee.find((c) => c.card_id === selectedCardId) || cardsForSelectedEmployee[0] || null;
+  const displayCard = card || assignableCards.find((c) => c.card_id === (assignmentCardId || requestedCardId)) || assignableCards[0] || activeCards[0] || null;
+  const cardStatus = getCardStatusConfig(displayCard?.status, t);
   const vendorOptions = card?.vendor_whitelist.map((v) => v.name) ?? [];
   const effectiveVendor = vendorOptions.includes(vendor) ? vendor : vendorOptions[0] || '';
+  const selectedVendorMeta = card?.vendor_whitelist.find((v) => v.name === effectiveVendor) || card?.vendor_whitelist[0];
+  const trustRequirements = displayCard?.trust_requirements?.length ? displayCard.trust_requirements : ERC8004_TRUST_REQUIREMENTS;
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [nextCards, nextTransactions] = await Promise.all([
+      const [nextCards, nextTransactions, nextEmployees] = await Promise.all([
         cawApi.listCards(),
         cawApi.listTransactions(),
+        cawApi.listDigitalEmployees().catch(() => []),
       ]);
       setCards(nextCards);
       setTransactions(nextTransactions);
+      if (nextEmployees.length > 0) {
+        setEmployees(nextEmployees);
+        if (!nextEmployees.some((employee) => employee.agent_id === selectedEmployeeId)) {
+          setSelectedEmployeeId(nextEmployees[0].agent_id);
+        }
+      }
       setOffline(false);
     } catch (err) {
       console.warn('[AgentConsole] Backend unreachable:', err);
@@ -87,15 +111,25 @@ export default function AgentConsole() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedEmployeeId]);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([cawApi.listCards(), cawApi.listTransactions()])
-      .then(([nextCards, nextTransactions]) => {
+    Promise.all([
+      cawApi.listCards(),
+      cawApi.listTransactions(),
+      cawApi.listDigitalEmployees().catch(() => []),
+    ])
+      .then(([nextCards, nextTransactions, nextEmployees]) => {
         if (cancelled) return;
         setCards(nextCards);
         setTransactions(nextTransactions);
+        if (nextEmployees.length > 0) {
+          setEmployees(nextEmployees);
+          if (!nextEmployees.some((employee) => employee.agent_id === selectedEmployeeId)) {
+            setSelectedEmployeeId(nextEmployees[0].agent_id);
+          }
+        }
         setOffline(false);
       })
       .catch((err) => {
@@ -109,7 +143,7 @@ export default function AgentConsole() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [selectedEmployeeId]);
 
   const recentTransactions = useMemo(() => {
     if (!card) return [];
@@ -140,7 +174,7 @@ export default function AgentConsole() {
     return errs;
   })();
 
-  const isFormValid = !!card && Object.keys(errors).length === 0 && parseFloat(amount) > 0 && purpose.trim().length > 0 && !!effectiveVendor;
+  const isFormValid = !!selectedEmployee && !!card && Object.keys(errors).length === 0 && parseFloat(amount) > 0 && purpose.trim().length > 0 && !!effectiveVendor;
 
   const friendlyReason = (raw: string): string => {
     if (raw.includes('scope_denied')) return t('agent.vendorNotWhitelist');
@@ -156,16 +190,21 @@ export default function AgentConsole() {
     if (!isFormValid || !card) return;
 
     setIsProcessing(true);
-    const runningSteps = emptySteps(t).map((step) => ({ ...step, status: 'success' as const }));
+    const runningSteps = emptySteps().map((step) => ({ ...step, status: 'success' as const }));
     setResult({ status: 'PENDING_APPROVAL', reason: '', steps: runningSteps });
 
     try {
       const response = await cawApi.submitPayment({
+        agent_id: selectedEmployee?.agent_id || '',
         card_id: card.card_id,
         vendor: effectiveVendor,
         amount: parseFloat(amount),
         purpose: purpose.trim(),
-        metadata: { source: 'agent_console' },
+        metadata: {
+          source: 'agent_console',
+          assigned_employee_id: selectedEmployee?.agent_id,
+          assigned_employee_name: selectedEmployee?.name,
+        },
       });
       const status = response.status === 'APPROVED' ? 'APPROVED' : 'DENIED';
       setResult({
@@ -202,6 +241,25 @@ export default function AgentConsole() {
     setResult(null);
   };
 
+  const handleAssignCard = async () => {
+    if (!selectedEmployee || !assignmentCardId) return;
+    setAssignmentLoading(true);
+    setResult(null);
+    try {
+      await cawApi.assignCard(assignmentCardId, {
+        agent_id: selectedEmployee.agent_id,
+        agent_name: selectedEmployee.name,
+      });
+      setSelectedCard(assignmentCardId);
+      setSearchParams({ card_id: assignmentCardId });
+      await loadData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : t('common.error'));
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="glass-card rounded-im p-8 text-center max-w-5xl mx-auto">
@@ -211,7 +269,7 @@ export default function AgentConsole() {
     );
   }
 
-  if (!card) {
+  if (activeCards.length === 0) {
     return (
       <div className="space-y-5 animate-fade-in max-w-5xl mx-auto">
         {offline && (
@@ -250,22 +308,123 @@ export default function AgentConsole() {
         </div>
       )}
 
+      {/* Agent Assignment */}
+      <div className="glass-card rounded-im p-4 lg:p-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary font-display">{t('agent.assignCardTitle')}</h3>
+            <p className="text-xs text-text-secondary mt-1">{t('agent.assignCardDesc')}</p>
+          </div>
+          {selectedEmployee && (
+            <span className="shrink-0 px-2.5 py-1 rounded-full text-xs bg-accent-patina/10 text-accent-patina">
+              {selectedEmployee.code}
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-text-secondary mb-1.5 block">{t('agent.selectEmployee')}</label>
+            <select
+              value={selectedEmployee?.agent_id || ''}
+              onChange={(e) => {
+                setSelectedEmployeeId(e.target.value);
+                setSelectedCard('');
+                setResult(null);
+              }}
+              className="w-full px-3 py-2 rounded-im text-sm input-kinpaku"
+            >
+              {employees.map((employee) => (
+                <option key={employee.agent_id} value={employee.agent_id}>
+                  {employee.name} — {employee.role}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {employees.map((employee) => {
+                const active = employee.agent_id === selectedEmployee?.agent_id;
+                return (
+                  <button
+                    key={employee.agent_id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedEmployeeId(employee.agent_id);
+                      setSelectedCard('');
+                      setResult(null);
+                    }}
+                    className={`flex items-center gap-2 rounded-im border p-2 text-left transition-colors ${
+                      active
+                        ? 'border-accent-gold bg-accent-gold/10'
+                        : 'border-border-default bg-bg-primary hover:border-border-hover'
+                    }`}
+                    aria-pressed={active}
+                  >
+                    <EmployeeAvatar employee={employee} size="sm" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-text-primary">{employee.code}</span>
+                      <span className="block truncate text-[10px] text-text-muted">{employee.risk_tier} risk</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-text-secondary mb-1.5 block">{t('agent.assignableCard')}</label>
+            <div className="flex gap-2">
+              <select
+                value={assignmentCardId}
+                onChange={(e) => setAssignmentCardId(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-im text-sm input-kinpaku"
+              >
+                <option value="">{t('agent.selectCardToAssign')}</option>
+                {assignableCards.map((c) => (
+                  <option key={c.card_id} value={c.card_id}>
+                    {(c.card_name || c.agent_name)} — ${c.budget.spent.toFixed(0)} / ${c.budget.monthly_max}
+                    {c.assigned_agent_id === selectedEmployeeId ? ` · ${t('agent.alreadyAssigned')}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAssignCard}
+                disabled={!selectedEmployee || !assignmentCardId || assignmentLoading}
+                className="px-3 py-2 rounded-im text-sm btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {assignmentLoading ? t('common.processing') : t('agent.confirmAssignment')}
+              </button>
+            </div>
+            <div className="mt-3 rounded-im bg-bg-primary border border-border-default p-3 text-xs text-text-secondary flex items-center gap-3">
+              <EmployeeAvatar employee={selectedEmployee} label={selectedEmployee?.name} size="sm" />
+              <div className="min-w-0">
+                <p className="font-medium text-text-primary">{t('agent.assignedCards')}</p>
+                <p className="mt-1 truncate">
+                  {cardsForSelectedEmployee.length > 0
+                    ? cardsForSelectedEmployee.map((c) => c.card_name || c.agent_name).join(' · ')
+                    : t('agent.noAssignedCardsForEmployee')}
+                </p>
+                {selectedEmployee && (
+                  <p className="mt-1 text-text-muted truncate">ERC-8004: {selectedEmployee.erc8004_agent_id}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Agent Persona */}
       <div className="glass-card rounded-im p-4 lg:p-5 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-im bg-accent-slate/10 flex items-center justify-center shrink-0">
-          <Bot className="w-6 h-6 text-accent-slate" strokeWidth={1.5} />
-        </div>
+        <EmployeeAvatar employee={selectedEmployee} label={displayCard?.card_name || displayCard?.agent_name} size="lg" className="shadow-sm" />
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-text-primary truncate">
-            {card.agent_name}
+            {selectedEmployee?.name || displayCard?.card_name || displayCard?.agent_name || t('agent.subtitle')}
           </h2>
           <p className="text-sm text-text-secondary truncate">
-            {t('agent.subtitle')}
+            {selectedEmployee ? selectedEmployee.role : t('agent.subtitle')}
           </p>
-          {(card.x402_url || card.erc8004_agent_id) && (
+          {(displayCard?.x402_url || displayCard?.erc8004_agent_id) && (
             <p className="text-xs text-text-muted truncate mt-1">
-              {card.x402_url ? `x402: ${card.x402_url}` : 'x402 enabled'}
-              {card.erc8004_agent_id ? ` · ERC-8004: ${card.erc8004_agent_id}` : ''}
+              {displayCard?.x402_url ? `x402: ${displayCard?.x402_url}` : 'x402 enabled'}
+              {displayCard?.erc8004_agent_id ? ` · ERC-8004: ${displayCard?.erc8004_agent_id}` : ''}
             </p>
           )}
         </div>
@@ -287,16 +446,21 @@ export default function AgentConsole() {
             </h3>
 
             <div className="space-y-4">
+              {!card && (
+                <div className="rounded-im border border-accent-amber/30 bg-accent-amber/10 px-3 py-2 text-xs text-accent-amber">
+                  {t('agent.noAssignedCardsDesc')}
+                </div>
+              )}
               <div>
                 <label className="text-xs text-text-secondary mb-1.5 block">{t('agent.selectCard')}</label>
                 <select
-                  value={card.card_id}
+                  value={card?.card_id || ''}
                   onChange={(e) => handleCardChange(e.target.value)}
                   className="w-full px-3 py-2 rounded-im text-sm input-kinpaku"
                 >
-                  {activeCards.map((c) => (
+                  {cardsForSelectedEmployee.map((c) => (
                     <option key={c.card_id} value={c.card_id}>
-                      {c.agent_name} — ${c.budget.spent.toFixed(0)} / ${c.budget.monthly_max} {t('common.usdc')}
+                      {(c.card_name || c.agent_name)} — ${c.budget.spent.toFixed(0)} / ${c.budget.monthly_max} {t('common.usdc')}
                     </option>
                   ))}
                 </select>
@@ -321,6 +485,18 @@ export default function AgentConsole() {
                     <AlertCircle className="w-3 h-3" strokeWidth={2} />
                     {errors.vendor}
                   </p>
+                )}
+                {selectedVendorMeta && (
+                  <div className="mt-2 rounded-im border border-border-default bg-bg-primary p-2 text-[10px] text-text-muted">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-text-primary">{selectedVendorMeta.x402_url ? 'x402 provider' : 'Legacy provider'}</span>
+                      <span className={selectedVendorMeta.erc8004_agent_id ? 'text-accent-patina' : 'text-accent-amber'}>
+                        {selectedVendorMeta.erc8004_agent_id ? 'ERC-8004 identity present' : 'No registry identity'}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate">Endpoint: {selectedVendorMeta.x402_url || 'not declared'}</p>
+                    <p className="truncate">Identity: {selectedVendorMeta.erc8004_agent_id || 'manual whitelist only'}</p>
+                  </div>
                 )}
               </div>
 
@@ -368,7 +544,7 @@ export default function AgentConsole() {
 
               <button
                 onClick={submitPayment}
-                disabled={isProcessing || !card}
+                disabled={isProcessing || !isFormValid}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-im text-sm btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isProcessing ? (
@@ -472,7 +648,7 @@ export default function AgentConsole() {
               {t('agent.policyEnginePipeline')}
             </h3>
             <div className="space-y-3">
-              {(result?.steps || emptySteps(t)).map((step, i, arr) => (
+              {(result?.steps || emptySteps()).map((step, i, arr) => (
                 <div key={step.id} className="relative">
                   <div className="flex items-center gap-3">
                     <div
@@ -512,20 +688,34 @@ export default function AgentConsole() {
               <div className="flex items-center justify-between text-xs mb-2">
                 <span className="text-text-secondary">{t('cards.cardBudget')}</span>
                 <span className="text-text-primary font-medium">
-                  ${card.budget.spent.toFixed(0)} / ${card.budget.monthly_max}
+                  ${(displayCard?.budget.spent || 0).toFixed(0)} / ${displayCard?.budget.monthly_max || 0}
                 </span>
               </div>
               <div className="h-1.5 bg-bg-primary rounded-full overflow-hidden">
                 <div
                   className="h-full bg-accent-patina rounded-full transition-all"
-                  style={{ width: `${Math.min((card.budget.spent / (card.budget.monthly_max || 1)) * 100, 100)}%` }}
+                  style={{ width: `${Math.min(((displayCard?.budget.spent || 0) / (displayCard?.budget.monthly_max || 1)) * 100, 100)}%` }}
                 />
               </div>
               <p className="text-[10px] text-text-muted mt-1.5">
-                {t('agent.singleTxLimit')}: ${card.budget.single_tx_limit} {t('common.usdc')}
+                {t('agent.singleTxLimit')}: ${displayCard?.budget.single_tx_limit || 0} {t('common.usdc')}
               </p>
+              <div className="mt-4 pt-3 border-t border-border-default">
+                <p className="text-xs font-medium text-text-primary flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-accent-patina" strokeWidth={1.5} />
+                  ERC-8004 trust gates
+                </p>
+                <div className="mt-2 space-y-1.5">
+                  {trustRequirements.map((item) => (
+                    <div key={item.registry} className="flex items-center justify-between gap-2 rounded-im bg-bg-primary border border-border-default px-2 py-1.5 text-[10px]">
+                      <span className="text-text-secondary">{item.protocol_name}</span>
+                      <span className={item.required ? 'text-accent-patina' : 'text-text-muted'}>{item.required ? 'required' : item.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                {card.vendor_whitelist.map((v) => (
+                {(displayCard?.vendor_whitelist || []).map((v) => (
                   <span key={v.address} className="px-2 py-0.5 rounded-md bg-accent-slate/10 text-accent-slate text-[10px] border border-accent-slate/20">
                     {v.name}
                   </span>

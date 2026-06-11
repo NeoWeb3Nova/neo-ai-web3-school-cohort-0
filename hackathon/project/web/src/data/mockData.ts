@@ -1,6 +1,30 @@
 // OPC Agent Treasury — Mock Data Layer
 // Mirrors mock_caw_client.py data models
 
+export interface TrustRequirement {
+  registry: 'Identity Registry' | 'Reputation Registry' | 'Validation Registry' | string;
+  protocol_name: string;
+  required: boolean;
+  status: string;
+  description: string;
+}
+
+export interface DigitalEmployee {
+  agent_id: string;
+  code: string;
+  name: string;
+  role: string;
+  risk_tier: 'low' | 'medium' | 'high' | string;
+  erc8004_agent_id: string;
+  erc8004_registry_url: string;
+  recommended_policy: {
+    monthly_budget: number;
+    single_tx_limit: number;
+    cooldown_hours: number;
+  };
+  capabilities: string[];
+}
+
 export interface Vendor {
   name: string;
   address: string;
@@ -12,7 +36,90 @@ export interface Vendor {
   source?: string;
   erc8004_agent_id?: string | null;
   erc8004_registry_url?: string | null;
+  trust_requirements?: TrustRequirement[];
 }
+
+export const ERC8004_TRUST_REQUIREMENTS: TrustRequirement[] = [
+  {
+    registry: 'Identity Registry',
+    protocol_name: 'Identity Registry',
+    required: true,
+    status: 'required',
+    description: 'ERC-721 based agent identity: who is this digital employee or x402 provider?',
+  },
+  {
+    registry: 'Reputation Registry',
+    protocol_name: 'Reputation Registry',
+    required: false,
+    status: 'minimum-score',
+    description: 'Feedback and score signals decide whether payment can be automated or needs review.',
+  },
+  {
+    registry: 'Validation Registry',
+    protocol_name: 'Validation Registry',
+    required: false,
+    status: 'required-for-high-risk',
+    description: 'Independent validation for service outputs; this is the ERC-8004 protocol term, not Evaluation Registry.',
+  },
+];
+
+export const DIGITAL_EMPLOYEES: DigitalEmployee[] = [
+  {
+    agent_id: 'agent-vega-research',
+    code: 'Vega',
+    name: 'Vega Research Agent',
+    role: 'Market and protocol research',
+    risk_tier: 'medium',
+    erc8004_agent_id: 'base:opc-vega-research',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=opc-vega-research',
+    recommended_policy: { monthly_budget: 300, single_tx_limit: 40, cooldown_hours: 4 },
+    capabilities: ['web research', 'x402 data APIs', 'protocol monitoring'],
+  },
+  {
+    agent_id: 'agent-lyra-growth',
+    code: 'Lyra',
+    name: 'Lyra Growth Agent',
+    role: 'Distribution and paid growth experiments',
+    risk_tier: 'high',
+    erc8004_agent_id: 'base:opc-lyra-growth',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=opc-lyra-growth',
+    recommended_policy: { monthly_budget: 800, single_tx_limit: 120, cooldown_hours: 8 },
+    capabilities: ['campaign testing', 'ads APIs', 'audience enrichment'],
+  },
+  {
+    agent_id: 'agent-orion-ops',
+    code: 'Orion',
+    name: 'Orion Operations Agent',
+    role: 'OPC operations, procurement and payment orchestration',
+    risk_tier: 'medium',
+    erc8004_agent_id: 'base:opc-orion-ops',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=opc-orion-ops',
+    recommended_policy: { monthly_budget: 500, single_tx_limit: 75, cooldown_hours: 6 },
+    capabilities: ['supplier calls', 'x402 payment routing', 'audit follow-up'],
+  },
+  {
+    agent_id: 'agent-atlas-infra',
+    code: 'Atlas',
+    name: 'Atlas Infrastructure Agent',
+    role: 'Infrastructure, RPC and deployment utilities',
+    risk_tier: 'low',
+    erc8004_agent_id: 'base:opc-atlas-infra',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=opc-atlas-infra',
+    recommended_policy: { monthly_budget: 250, single_tx_limit: 25, cooldown_hours: 2 },
+    capabilities: ['RPC access', 'deployment checks', 'infra monitoring'],
+  },
+  {
+    agent_id: 'agent-nova-finance',
+    code: 'Nova',
+    name: 'Nova Finance Agent',
+    role: 'Cashflow, reconciliation and exception review',
+    risk_tier: 'medium',
+    erc8004_agent_id: 'base:opc-nova-finance',
+    erc8004_registry_url: 'https://8004scan.io/agents?search=opc-nova-finance',
+    recommended_policy: { monthly_budget: 400, single_tx_limit: 60, cooldown_hours: 6 },
+    capabilities: ['reconciliation', 'budget tracking', 'exception triage'],
+  },
+];
 
 export interface Budget {
   currency: string;
@@ -32,6 +139,10 @@ export interface CardPact {
   card_id: string;
   agent_id: string;
   agent_name: string;
+  card_name?: string;
+  assigned_agent_id?: string | null;
+  assigned_agent_name?: string | null;
+  assigned_at?: string | null;
   owner: string;
   // CAW can return newer or raw Pact states before the frontend knows about them.
   status: string;
@@ -46,6 +157,7 @@ export interface CardPact {
   x402_url?: string | null;
   erc8004_agent_id?: string | null;
   erc8004_registry_url?: string | null;
+  trust_requirements?: TrustRequirement[];
 }
 
 export interface Transaction {

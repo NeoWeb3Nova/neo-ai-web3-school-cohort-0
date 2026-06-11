@@ -26,12 +26,16 @@ class CreateCardRequest(BaseModel):
     vendor_whitelist: List[Dict[str, Any]]
     cooldown_hours: int = 12
     duration_days: int = 30
+    agent_id: Optional[str] = None
+    erc8004_agent_id: Optional[str] = None
+    erc8004_registry_url: Optional[str] = None
 
 
 class CardResponse(BaseModel):
     card_id: str
     agent_id: str
     agent_name: str
+    card_name: Optional[str] = None
     owner: str
     status: str
     budget: Dict[str, Any]
@@ -45,8 +49,12 @@ class CardResponse(BaseModel):
     x402_url: Optional[str] = None
     erc8004_agent_id: Optional[str] = None
     erc8004_registry_url: Optional[str] = None
+    trust_requirements: List[Dict[str, Any]] = []
+    assigned_agent_id: Optional[str] = None
+    assigned_agent_name: Optional[str] = None
+    assigned_at: Optional[str] = None
 
-    @field_validator("created_at", "expires_at", mode="before")
+    @field_validator("created_at", "expires_at", "assigned_at", mode="before")
     @classmethod
     def none_datetime_to_empty_string(cls, value: Any) -> str:
         """CAW may return null for optional Pact timestamps; keep frontend contract as string."""
@@ -59,7 +67,21 @@ class ApproveResponse(BaseModel):
     api_key: Optional[str] = None
 
 
+class AssignCardRequest(BaseModel):
+    agent_id: str
+    agent_name: str
+
+
+class AssignCardResponse(BaseModel):
+    card_id: str
+    status: str
+    assigned_agent_id: str
+    assigned_agent_name: str
+    assigned_at: str
+
+
 class PaymentRequest(BaseModel):
+    agent_id: str
     card_id: str
     vendor: str
     amount: float = Field(..., gt=0)
@@ -191,3 +213,15 @@ class ERC8004Agent(BaseModel):
 class MarketplaceContextResponse(BaseModel):
     x402scan: Dict[str, Any]
     erc8004: Dict[str, Any]
+
+
+class DigitalEmployee(BaseModel):
+    agent_id: str
+    code: str
+    name: str
+    role: str
+    risk_tier: str
+    erc8004_agent_id: str
+    erc8004_registry_url: str
+    recommended_policy: Dict[str, Any]
+    capabilities: List[str]

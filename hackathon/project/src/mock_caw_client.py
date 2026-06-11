@@ -25,7 +25,7 @@ from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict, Any
 
-from service_registry import get_vendor_registry, list_x402_providers
+from service_registry import get_vendor_registry, get_trust_requirements, list_x402_providers
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -76,6 +76,12 @@ class CardPact:
     created_at: str
     expires_at: str
     api_key: str = ""  # Pact-scoped API Key（激活后生成）
+    erc8004_agent_id: str = ""
+    erc8004_registry_url: str = ""
+    card_name: str = ""
+    assigned_agent_id: str = ""
+    assigned_agent_name: str = ""
+    assigned_at: str = ""
 
 
 @dataclass
@@ -158,13 +164,17 @@ class MockCAWClient:
         cooldown_hours: int = 12,
         owner: Optional[str] = None,
         duration_days: int = 30,
+        agent_id: Optional[str] = None,
+        erc8004_agent_id: Optional[str] = None,
+        erc8004_registry_url: Optional[str] = None,
     ) -> str:
         """
         模拟：Owner 在 CAW App 中为 Agent 创建 Card Pact
         对应真实 API: POST /v1/pacts
         """
         card_id = f"card-{uuid.uuid4().hex[:8]}"
-        agent_id = f"agent-{agent_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
+        generated_agent_id = f"agent-{agent_name.lower().replace(' ', '-')}-{uuid.uuid4().hex[:4]}"
+        agent_id = agent_id or generated_agent_id
         now = datetime.now(timezone.utc)
         expires = now + timedelta(days=duration_days)
 
@@ -192,6 +202,9 @@ class MockCAWClient:
             ),
             created_at=now.isoformat(),
             expires_at=expires.isoformat(),
+            erc8004_agent_id=erc8004_agent_id or "",
+            erc8004_registry_url=erc8004_registry_url or "",
+            card_name=agent_name,
         )
 
         self._cards[card_id] = card
@@ -222,6 +235,32 @@ class MockCAWClient:
             "status": "ACTIVE",
             "api_key": card.api_key,
             "delegation_scope": "wallet:spend:limited",
+        }
+
+    def assign_card(self, card_id: str, agent_id: str, agent_name: str) -> Dict[str, Any]:
+        """Persistently assign an ACTIVE permission card to one digital employee."""
+        card = self._get_card_or_raise(card_id)
+        if card.status != "ACTIVE":
+            raise ValueError(f"Card {card_id} must be ACTIVE before assignment (status={card.status})")
+        if not agent_id.strip():
+            raise ValueError("agent_id is required")
+        if not agent_name.strip():
+            raise ValueError("agent_name is required")
+
+        now = datetime.now(timezone.utc).isoformat()
+        card.assigned_agent_id = agent_id
+        card.assigned_agent_name = agent_name
+        card.assigned_at = now
+        self._log_audit("CARD_ASSIGNED", card_id, {
+            "assigned_agent_id": agent_id,
+            "assigned_agent_name": agent_name,
+        })
+        return {
+            "card_id": card_id,
+            "status": "ASSIGNED",
+            "assigned_agent_id": agent_id,
+            "assigned_agent_name": agent_name,
+            "assigned_at": now,
         }
 
     def revoke_card(self, card_id: str) -> Dict[str, Any]:
@@ -282,6 +321,7 @@ class MockCAWClient:
         card_id: str,
         vendor: str,
         amount: float,
+        agent_id: str = "",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -300,12 +340,22 @@ class MockCAWClient:
         # ── Stage 1: Permission Check ──
         if card.status != "ACTIVE":
             reason = f"PERMISSION_DENIED: card status is {card.status}"
-            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        if not card.assigned_agent_id:
+            reason = "PERMISSION_DENIED: card_not_assigned"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason)
+
+        if agent_id != card.assigned_agent_id:
+            reason = f"PERMISSION_DENIED: agent_not_assigned ({agent_id} cannot use {card.card_id})"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
             return self._payment_result(tx, card, "DENIED", reason)
 
         if amount <= 0:
             reason = "PERMISSION_DENIED: amount must be positive"
-            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
             return self._payment_result(tx, card, "DENIED", reason)
 
         # ── Stage 2: Policy Rule Evaluation ──
@@ -670,7 +720,7 @@ class MockCAWClient:
         tx = Transaction(
             tx_id=tx_id,
             card_id=card.card_id,
-            agent_id=card.agent_id,
+            agent_id=card.assigned_agent_id or card.agent_id,
             timestamp=datetime.now(timezone.utc).isoformat(),
             vendor=vendor,
             vendor_address=vendor_addr,
@@ -706,7 +756,7 @@ class MockCAWClient:
             "alert_level": alert_level,
             "timestamp": tx.timestamp,
             "card_id": card.card_id,
-            "agent_id": card.agent_id,
+            "agent_id": card.assigned_agent_id or card.agent_id,
             "currency": card.budget.currency,
         }
 
@@ -731,6 +781,10 @@ class MockCAWClient:
             "card_id": card.card_id,
             "agent_id": card.agent_id,
             "agent_name": card.agent_name,
+            "card_name": card.card_name or card.agent_name,
+            "assigned_agent_id": card.assigned_agent_id,
+            "assigned_agent_name": card.assigned_agent_name,
+            "assigned_at": card.assigned_at,
             "owner": card.owner,
             "status": card.status,
             "budget": asdict(card.budget),
@@ -742,8 +796,9 @@ class MockCAWClient:
             "api_key": card.api_key[:12] + "..." if card.api_key else "",
             "x402_enabled": bool(primary_provider),
             "x402_url": primary_provider.get("x402_url") if primary_provider else None,
-            "erc8004_agent_id": primary_provider.get("erc8004_agent_id") if primary_provider else None,
-            "erc8004_registry_url": primary_provider.get("erc8004_registry_url") if primary_provider else None,
+            "erc8004_agent_id": card.erc8004_agent_id or (primary_provider.get("erc8004_agent_id") if primary_provider else None),
+            "erc8004_registry_url": card.erc8004_registry_url or (primary_provider.get("erc8004_registry_url") if primary_provider else None),
+            "trust_requirements": get_trust_requirements(),
         }
 
     def _tx_to_dict(self, tx: Transaction) -> Dict[str, Any]:
@@ -865,14 +920,15 @@ if __name__ == "__main__":
 
     # 2. 审批
     caw.approve_card(card_id)
+    caw.assign_card(card_id, "agent-content", "Content Agent")
     print(f"[2] Card approved, status=ACTIVE")
 
     # 3. 正常支付
-    r1 = caw.submit_payment(card_id, "Midjourney", 30.0, {"purpose": "monthly subscription"})
+    r1 = caw.submit_payment(card_id, "Midjourney", 30.0, agent_id="agent-content", metadata={"purpose": "monthly subscription"})
     print(f"[3] Payment 1: {r1['status']} | remaining={r1['remaining_budget']:.2f}")
 
     # 4. 白名单外支付（应拒绝）
-    r2 = caw.submit_payment(card_id, "EvilHacker", 10.0)
+    r2 = caw.submit_payment(card_id, "EvilHacker", 10.0, agent_id="agent-content")
     print(f"[4] Payment 2: {r2['status']} | reason={r2['reason']}")
 
     # 5. 审计
