@@ -159,28 +159,6 @@ ERC8004_AGENTS: List[Dict[str, Any]] = [
 
 DIGITAL_EMPLOYEES: List[Dict[str, Any]] = [
     {
-        "agent_id": "agent-alpha-research",
-        "code": "Alpha",
-        "name": "Alpha Research Agent",
-        "role": "Market research and paid data gathering",
-        "risk_tier": "medium",
-        "erc8004_agent_id": "base:opc-alpha-research",
-        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-alpha-research",
-        "recommended_policy": {"monthly_budget": 300, "single_tx_limit": 40, "cooldown_hours": 4},
-        "capabilities": ["market research", "x402 data APIs", "protocol monitoring"],
-    },
-    {
-        "agent_id": "agent-beta-growth",
-        "code": "Beta",
-        "name": "Beta Growth Agent",
-        "role": "Distribution and paid growth experiments",
-        "risk_tier": "high",
-        "erc8004_agent_id": "base:opc-beta-growth",
-        "erc8004_registry_url": "https://8004scan.io/agents?search=opc-beta-growth",
-        "recommended_policy": {"monthly_budget": 800, "single_tx_limit": 120, "cooldown_hours": 8},
-        "capabilities": ["campaign testing", "ads APIs", "audience enrichment"],
-    },
-    {
         "agent_id": "agent-watt-infra",
         "code": "Watt",
         "name": "Watt Infrastructure Agent",

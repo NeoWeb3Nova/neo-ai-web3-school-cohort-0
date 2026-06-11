@@ -160,11 +160,14 @@ class RealCAWClient:
         """
         为 Agent 创建一个 Transfer Pact，映射原有 Card 概念。
 
-        策略映射:
-        - monthly_budget  → deny_if.usage_limits.rolling_30d.amount_usd_gt
-        - single_tx_limit → deny_if.amount_usd_gt
+        策略映射 (基于 CAW Transfer Policy 文档):
+        - single_tx_limit   → deny_if.amount_usd_gt (硬拒绝)
+                          → review_if.amount_usd_gt (软阈值，触发审批)
+        - monthly_budget    → deny_if.usage_limits.rolling_30d.amount_usd_gt (30天滚动窗口)
+                          → completion_conditions.amount_spent_usd (硬终止)
         - vendor_whitelist  → when.destination_address_in
-        - cooldown_hours    → deny_if.usage_limits.rolling_{cooldown_hours}h.tx_count_gt (近似)
+        - duration_days     → completion_conditions.time_elapsed (Pact 有效期)
+        - cooldown_hours    → 本地 submit_payment 层实现 (CAW 不支持 per-vendor cooldown)
         """
         now = datetime.now(timezone.utc)
         expires = now + timedelta(days=duration_days)
@@ -178,15 +181,6 @@ class RealCAWClient:
 
         if not dest_addrs:
             raise ValueError("No valid vendor addresses provided. Set VENDOR_*_ADDR env vars.")
-
-        # 构建 usage_limits — 仅使用 SDK 支持的固定字段
-        # 注意：CAW Policy Engine 的 usage_limits 只接受预定义键名
-        usage_limits: Dict[str, Any] = {
-            "rolling_30d": {
-                "amount_usd_gt": str(monthly_budget),
-                "tx_count_gt": 9999,  # 宽松，主要靠金额限制
-            }
-        }
 
         policies = [
             {
@@ -203,9 +197,12 @@ class RealCAWClient:
                     },
                     "deny_if": {
                         "amount_usd_gt": str(single_tx_limit),
-                        "usage_limits": usage_limits,
+                        "usage_limits": {
+                            "rolling_30d": {
+                                "amount_usd_gt": str(monthly_budget),
+                            }
+                        },
                     },
-                    # 大额触发人工审批
                     "review_if": {
                         "amount_usd_gt": str(single_tx_limit * 0.8),
                     },
@@ -228,9 +225,9 @@ class RealCAWClient:
             f"- ERC-8004 identity: {erc8004_agent_id or 'not provided'}\n"
             f"- ERC-8004 registry: {erc8004_registry_url or 'not provided'}\n\n"
             f"# Risk Controls\n"
-            f"- Per-tx cap: ${single_tx_limit}\n"
-            f"- Monthly cap: ${monthly_budget}\n"
-            f"- Cooldown: {cooldown_hours}h between same-vendor payments\n"
+            f"- Per-tx cap: ${single_tx_limit} (review above ${single_tx_limit * 0.8})\n"
+            f"- Monthly cap: ${monthly_budget} (rolling 30d)\n"
+            f"- Cooldown: {cooldown_hours}h between same-vendor payments (enforced locally)\n"
             f"- Expires: {expires.isoformat()}"
         )
 
@@ -244,7 +241,7 @@ class RealCAWClient:
             "completion_conditions": completion_conditions,
             "execution_plan": execution_plan,
         }
-        result = self._submit_pact_via_http_or_fresh_sdk(
+        result = self._submit_pact_via_fresh_sdk(
             wallet_id=self.wallet_uuid,
             intent=intent,
             spec=pact_spec,
@@ -383,12 +380,40 @@ class RealCAWClient:
         }
 
     def revoke_card(self, card_id: str) -> Dict[str, Any]:
-        """吊销 Pact，立即失效。"""
+        """吊销 Pact，立即失效。
+
+        CAW revoke_pact 只允许 Owner API key 调用。当使用 Agent key 时，
+        CAW 会返回 404 "Pact not found"（安全考虑伪装）。
+        因此先验证 get_pact 能否读取，再尝试 revoke，以区分真正的
+        "not found" 和 "权限不足"。
+        """
         card = self._get_card_or_raise(card_id)
 
+        # 先验证 pact 在 CAW 中是否真正存在
+        try:
+            _sync(self._client.get_pact(card_id))
+        except Exception as exc:
+            # 真正不存在 → 直接将本地状态标为 REVOKED
+            logger.warning("[CAW] Pact %s not found on CAW (get_pact failed): %s", card_id, exc)
+            card["status"] = "REVOKED"
+            card["api_key"] = ""
+            self._log_audit("PACT_REVOKED", card_id, {"reason": "pact_not_found_on_caw", "note": "local_cleanup_only"})
+            return {"card_id": card_id, "status": "REVOKED", "api_key_invalidated": True}
+
+        # Pact 存在 → 尝试 revoke
         try:
             _sync(self._client.revoke_pact(card_id))
         except Exception as exc:
+            # 如果 get_pact 能成功但 revoke_pact 返回 404，说明当前 API key
+            # 是 Agent key 而非 Owner key。CAW 故意返回 404 伪装权限不足。
+            err_str = str(exc).lower()
+            if "not found" in err_str or "404" in err_str:
+                raise PermissionError(
+                    f"Revoke denied for pact {card_id}: current API key is an Agent key, "
+                    f"but CAW revoke_pact requires an Owner API key. "
+                    f"Get the Owner key with: caw wallet current --show-api-key "
+                    f"and set AGENT_WALLET_OWNER_API_KEY env var."
+                ) from exc
             logger.warning("[CAW] revoke_pact API call failed (may already be revoked): %s", exc)
 
         card["status"] = "REVOKED"
@@ -408,12 +433,33 @@ class RealCAWClient:
         except Exception as exc:
             raise ValueError(f"Card {card_id} not found: {exc}")
 
-    def list_cards(self) -> List[Dict[str, Any]]:
-        """列出所有 Pacts（本地缓存 + API 补充）。
+    def _is_junk_pact(self, card: Dict[str, Any]) -> bool:
+        """Heuristic filter for demo / test pacts that clutter the Cards UI."""
+        import re
+        name = str(card.get("agent_name") or card.get("card_name") or "").strip()
+        if not name:
+            return False
+        # All-caps gibberish like ZZZ, CCCC, AAAA, SSS, WWW, TTTT
+        if re.match(r'^[A-Z]{3,4}$', name):
+            return True
+        # Known test / demo names and system default pacts
+        junk_patterns = (
+            "verification card",
+            "neo test",
+            "random-demo",
+            "hackathon-seth",
+            "demo-sepolia",
+            "test transfer",
+            "default",
+        )
+        lower = name.lower()
+        for pat in junk_patterns:
+            if pat in lower:
+                return True
+        return False
 
-        FastAPI sync endpoints may call this repeatedly/concurrently. Prefer sync HTTP
-        for the read path so the SDK's aiohttp client is not reused across event loops.
-        """
+    def list_cards(self) -> List[Dict[str, Any]]:
+        """列出所有 Pacts（本地缓存 + API 补充），过滤测试垃圾数据。"""
         try:
             pacts = self._fetch_pacts_via_http()
             for p in pacts:
@@ -432,28 +478,23 @@ class RealCAWClient:
             except Exception as exc2:
                 logger.warning("[CAW] SDK list_pacts also failed: %s", exc2)
 
-        return [dict(c) for c in self._cards.values()]
+        cards = [dict(c) for c in self._cards.values()]
+        cleaned = [c for c in cards if not self._is_junk_pact(c)]
+        if len(cleaned) < len(cards):
+            logger.info("[CAW] Filtered out %d junk/demo pacts", len(cards) - len(cleaned))
+        return cleaned
 
-    def _submit_pact_via_http_or_fresh_sdk(self, wallet_id: str, intent: str, spec: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a Pact without reusing the singleton SDK aiohttp session across FastAPI loops.
+    def _submit_pact_via_fresh_sdk(self, wallet_id: str, intent: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a Pact via a fresh SDK client instance.
 
-        The singleton SDK client is still useful for some calls, but submit_pact from a
-        long-lived FastAPI process can hit aiohttp "Future attached to a different loop".
-        Prefer the synchronous REST endpoint; if that shape changes, fall back to a
-        fresh SDK client so any aiohttp connector is bound to the current call only.
+        The singleton SDK client's aiohttp session can hit "Future attached to a different loop"
+        when reused across FastAPI sync endpoints. A fresh client per call ensures the
+        aiohttp connector is bound to the current event loop only.
         """
-        payload = {"wallet_id": wallet_id, "intent": intent, "spec": spec}
-        try:
-            return self._http_post_json("/api/v1/pacts", payload)
-        except Exception as http_exc:
-            logger.warning("[CAW] HTTP submit_pact failed (%s), falling back to fresh SDK client", http_exc)
-            if WalletAPIClient is None:
-                raise
-            fresh_client = WalletAPIClient(base_url=self.base_url, api_key=self.api_key)
-            try:
-                return _sync(fresh_client.submit_pact(wallet_id=wallet_id, intent=intent, spec=spec))
-            except Exception as sdk_exc:
-                raise RuntimeError(f"submit_pact failed via HTTP and fresh SDK: HTTP={http_exc}; SDK={sdk_exc}") from sdk_exc
+        if WalletAPIClient is None:
+            raise ImportError("cobo-agentic-wallet SDK is not installed. Run: pip install cobo-agentic-wallet")
+        fresh_client = WalletAPIClient(base_url=self.base_url, api_key=self.api_key)
+        return _sync(fresh_client.submit_pact(wallet_id=wallet_id, intent=intent, spec=spec))
 
     def _fetch_pacts_via_http(self) -> List[Dict[str, Any]]:
         """使用同步 urllib 调用 CAW REST API 获取 Pact 列表。"""
@@ -1039,36 +1080,104 @@ class RealCAWClient:
         return status_map.get(normalized, normalized or "UNKNOWN")
 
     def _pact_to_card_dict(self, pact: Dict[str, Any]) -> Dict[str, Any]:
-        """将 CAW Pact 对象转换为与 Mock 兼容的 Card dict。"""
+        """将 CAW Pact 对象转换为与 Mock 兼容的 Card dict。
+
+        策略：
+        1. 优先从 spec.policies 中解析 budget / limit / vendors（get_pact 详情）
+        2. 如果 spec 为空（list_pacts 精简响应），从 name/intent 字段解析
+        3. 从 progress_usd_spent 读取已花费金额
+        4. 从 execution_plan 解析 vendor 名称（如果 spec 中没有）
+        """
+        import re
+
         pid = pact.get("pact_id") or pact.get("id") or "unknown"
-        spec = pact.get("spec", {})
-        policies = spec.get("policies", [])
+        name = pact.get("name") or pact.get("intent", "Unknown Agent")
+        spec = pact.get("spec") or {}
+        policies = spec.get("policies", []) if isinstance(spec, dict) else []
+        execution_plan = spec.get("execution_plan", "") if isinstance(spec, dict) else ""
+
+        # ── Fallback 解析：从 name/intent 提取 budget/limit/agent_name ──
+        parsed = {"agent_name": name, "monthly_max": 0.0, "single_tx_limit": 0.0}
+        m = re.search(
+            r'Issue spending card for\s+([^:]+):\s*budget\s+\$([\d.]+)/month,\s*tx limit\s+\$([\d.]+)',
+            name,
+            re.IGNORECASE,
+        )
+        if m:
+            parsed["agent_name"] = m.group(1).strip()
+            parsed["monthly_max"] = float(m.group(2))
+            parsed["single_tx_limit"] = float(m.group(3))
 
         # 尝试从 policy 中恢复 budget / tx_limit
-        monthly_max = 0.0
         single_tx_limit = 0.0
         if policies:
             rules = policies[0].get("rules", {})
             deny_if = rules.get("deny_if", {})
-            single_tx_limit = float(deny_if.get("amount_usd_gt", 0))
+            try:
+                single_tx_limit = float(deny_if.get("amount_usd_gt", 0))
+            except (TypeError, ValueError):
+                single_tx_limit = 0.0
+
+        # monthly_max: 旧 Pact 可能从 usage_limits 读取，新 Pact 从 completion_conditions 读取
+        monthly_max = 0.0
+        if policies:
+            deny_if = policies[0].get("rules", {}).get("deny_if", {})
             usage = deny_if.get("usage_limits", {})
-            rolling_30d = usage.get("rolling_30d", {})
-            monthly_max = float(rolling_30d.get("amount_usd_gt", 0))
+            if usage:
+                rolling_30d = usage.get("rolling_30d", {})
+                try:
+                    monthly_max = float(rolling_30d.get("amount_usd_gt", 0))
+                except (TypeError, ValueError):
+                    monthly_max = 0.0
+        if not monthly_max and isinstance(spec, dict):
+            for condition in spec.get("completion_conditions", []):
+                if condition.get("type") == "amount_spent_usd":
+                    try:
+                        monthly_max = float(condition.get("threshold", 0))
+                    except (TypeError, ValueError):
+                        monthly_max = 0.0
+                    break
+
+        # 如果 policy 解析失败，使用 fallback
+        if not monthly_max and parsed["monthly_max"]:
+            monthly_max = parsed["monthly_max"]
+        if not single_tx_limit and parsed["single_tx_limit"]:
+            single_tx_limit = parsed["single_tx_limit"]
+
+        # 已花费金额
+        spent = 0.0
+        try:
+            spent = float(pact.get("progress_usd_spent", 0) or 0)
+        except (TypeError, ValueError):
+            spent = 0.0
 
         # vendor whitelist
         vendor_whitelist = []
         if policies:
             when = policies[0].get("rules", {}).get("when", {})
             for dest in when.get("destination_address_in", []):
+                addr = dest.get("address", "")
                 vendor_whitelist.append({
-                    "name": dest.get("address", "")[:8] + "...",
-                    "address": dest.get("address", ""),
+                    "name": addr[:8] + "..." if addr else "unknown",
+                    "address": addr,
                     "category": "api",
                 })
+        # 如果 spec 没有提供地址，尝试从 execution_plan 提取 vendor 名称
+        if not vendor_whitelist and execution_plan:
+            vm = re.search(r'- Vendors:\s*([^\n]+)', execution_plan)
+            if vm:
+                names = [n.strip() for n in vm.group(1).split(',')]
+                for n in names:
+                    if n and n.lower() not in ('not provided', 'none', 'n/a'):
+                        vendor_whitelist.append({
+                            "name": n,
+                            "address": "",
+                            "category": "api",
+                        })
 
         created_at = pact.get("created_at") or datetime.now(timezone.utc).isoformat()
         expires_at = pact.get("expires_at") or ""
-        if not expires_at:
+        if not expires_at and isinstance(spec, dict):
             for condition in spec.get("completion_conditions", []):
                 if condition.get("type") == "time_elapsed":
                     try:
@@ -1089,10 +1198,20 @@ class RealCAWClient:
                 "allowed_hours_end": "23:59",
             }
 
+        # 从 execution_plan 解析 cooldown
+        cooldown_hours = 12
+        if execution_plan:
+            cm = re.search(r'Cooldown:\s*(\d+)h', execution_plan)
+            if cm:
+                try:
+                    cooldown_hours = int(cm.group(1))
+                except (TypeError, ValueError):
+                    cooldown_hours = 12
+
         return {
             "card_id": pid,
-            "agent_name": pact.get("intent", "Unknown Agent"),
-            "card_name": pact.get("intent", "Unknown Agent"),
+            "agent_name": parsed["agent_name"],
+            "card_name": parsed["agent_name"],
             "agent_id": f"agent-{pid}",
             "assigned_agent_id": "",
             "assigned_agent_name": "",
@@ -1102,11 +1221,11 @@ class RealCAWClient:
             "budget": {
                 "currency": "USDC",
                 "monthly_max": monthly_max,
-                "spent": 0.0,  # 无法从 pact 直接获取，需从交易推算
+                "spent": spent,
                 "single_tx_limit": single_tx_limit,
             },
             "vendor_whitelist": vendor_whitelist,
-            "cooldown_hours": 12,
+            "cooldown_hours": cooldown_hours,
             "time_window": time_window,
             "created_at": created_at,
             "expires_at": expires_at,

@@ -270,6 +270,12 @@ def revoke_card(card_id: str):
             status=result["status"],
             api_key=None,
         )
+    except PermissionError as exc:
+        # Agent key 无法 revoke，需要用户在 CAW App 中手动操作
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc) + " \u8bf7在 CAW App 中手动吊销此 Pact，前端将自动同步状态。",
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

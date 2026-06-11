@@ -78,7 +78,7 @@ def test_digital_employee_endpoint_models_opc_agent_directory():
     assert response.status_code == 200
     employees = response.json()
     codes = {agent["code"] for agent in employees}
-    assert {"Alpha", "Beta", "Nova", "Watt"}.issubset(codes)
+    assert {"Nova", "Watt", "Vega", "Lyra"}.issubset(codes)
     nova = next(agent for agent in employees if agent["code"] == "Nova")
     assert nova["agent_id"] == "agent-nova-ops"
     assert nova["erc8004_agent_id"].startswith("base:")

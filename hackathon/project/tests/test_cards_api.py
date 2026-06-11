@@ -193,37 +193,35 @@ def test_real_caw_statuses_are_normalized_for_frontend():
     assert client._extract_pact_status({"status": None}) == "UNKNOWN"
 
 
-def test_real_caw_submit_pact_prefers_sync_http_and_avoids_reused_sdk_loop():
+def test_real_caw_submit_pact_uses_fresh_sdk_client_only():
+    """After removing HTTP fallback, _submit_pact_via_fresh_sdk must instantiate a new
+    WalletAPIClient per call and call submit_pact on it."""
+    import unittest.mock
+
     client = RealCAWClient.__new__(RealCAWClient)
     client.wallet_uuid = "wallet-123"
     client.base_url = "https://api.example"
     client.api_key = "caw_test"
+    client._client = None
 
-    class LoopPoisonedSDK:
-        def submit_pact(self, **kwargs):  # pragma: no cover - must not be called when HTTP succeeds
-            raise AssertionError("singleton SDK submit_pact should not be called when HTTP succeeds")
-
-    client._client = LoopPoisonedSDK()
     captured = {}
 
-    def fake_http_post_json(path, payload):
-        captured["path"] = path
-        captured["payload"] = payload
-        return {"result": {"pact_id": "pact-http-create"}}
+    class FakeFreshSDK:
+        async def submit_pact(self, wallet_id, intent, spec):
+            captured["args"] = {"wallet_id": wallet_id, "intent": intent, "spec": spec}
+            return {"pact_id": "pact-fresh-sdk"}
 
-    client._http_post_json = fake_http_post_json
+    with unittest.mock.patch("real_caw_client.WalletAPIClient", side_effect=lambda base_url, api_key: FakeFreshSDK()):
+        result = client._submit_pact_via_fresh_sdk(
+            wallet_id="wallet-123",
+            intent="Issue spending card",
+            spec={"policies": [], "completion_conditions": []},
+        )
 
-    result = client._submit_pact_via_http_or_fresh_sdk(
-        wallet_id="wallet-123",
-        intent="Issue spending card",
-        spec={"policies": [], "completion_conditions": []},
-    )
-
-    assert result["result"]["pact_id"] == "pact-http-create"
-    assert captured["path"] == "/api/v1/pacts"
-    assert captured["payload"]["wallet_id"] == "wallet-123"
-    assert captured["payload"]["intent"] == "Issue spending card"
-    assert captured["payload"]["spec"] == {"policies": [], "completion_conditions": []}
+    assert result["pact_id"] == "pact-fresh-sdk"
+    assert captured["args"]["wallet_id"] == "wallet-123"
+    assert captured["args"]["intent"] == "Issue spending card"
+    assert captured["args"]["spec"] == {"policies": [], "completion_conditions": []}
 
 
 def test_real_caw_list_cards_prefers_sync_http_and_avoids_sdk_loop():

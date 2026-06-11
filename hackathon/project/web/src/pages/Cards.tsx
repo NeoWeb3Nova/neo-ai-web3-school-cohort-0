@@ -61,6 +61,7 @@ export default function Cards() {
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [revokedGroupExpanded, setRevokedGroupExpanded] = useState(false);
   const [showNewCard, setShowNewCard] = useState(false);
   const [newCardName, setNewCardName] = useState('General Policy Card');
   const [newCardBudget, setNewCardBudget] = useState('500');
@@ -112,19 +113,6 @@ export default function Cards() {
       alert(t('common.error'));
     } finally {
       setActionLoading(null);
-    }
-  };
-
-  const handleRevoke = async (cardId: string) => {
-    setActionLoading(cardId);
-    try {
-      await cawApi.revokeCard(cardId);
-      await loadCards();
-    } catch {
-      alert(t('common.error'));
-    } finally {
-      setActionLoading(null);
-      setConfirmRevoke(null);
     }
   };
 
@@ -732,23 +720,16 @@ export default function Cards() {
                 <Trash2 className="w-5 h-5 text-accent-coral" strokeWidth={1.5} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-text-primary">{t('cards.revokeConfirmTitle')}</h3>
+                <h3 className="text-sm font-semibold text-text-primary">{t('cards.revokeInAppTitle')}</h3>
                 <p className="text-xs text-text-secondary">
                   {cards.find((c) => c.card_id === confirmRevoke)?.agent_name}
                 </p>
               </div>
             </div>
             <p className="text-sm text-text-secondary leading-relaxed mb-5">
-              {t('cards.revokeConfirmDesc')}
+              {t('cards.revokeInAppDesc')}
             </p>
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => handleRevoke(confirmRevoke)}
-                disabled={!!actionLoading}
-                className="flex-1 px-4 py-2 bg-accent-coral text-white rounded-im text-sm font-semibold hover:bg-accent-coral/90 transition-colors disabled:opacity-50"
-              >
-                {t('cards.revokeCard')}
-              </button>
               <button
                 onClick={() => setConfirmRevoke(null)}
                 className="flex-1 px-4 py-2 rounded-im text-sm btn-ghost"
@@ -816,9 +797,13 @@ export default function Cards() {
         </div>
       )}
 
-      {/* Cards Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
-        {cards.map((card) => {
+      {/* Cards Grouped by Status */}
+      {(() => {
+        const pending = cards.filter((c) => normalizeCardStatus(c.status) === 'PENDING_APPROVAL');
+        const active = cards.filter((c) => normalizeCardStatus(c.status) === 'ACTIVE');
+        const revoked = cards.filter((c) => normalizeCardStatus(c.status) === 'REVOKED');
+
+        const renderCard = (card: CardPact) => {
           const status = getCardStatusConfig(card.status, t);
           const normalizedStatus = normalizeCardStatus(card.status);
           const isExpanded = expandedCard === card.card_id;
@@ -1077,8 +1062,61 @@ export default function Cards() {
               )}
             </div>
           );
-        })}
-      </div>
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Pending Approval */}
+            {pending.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-accent-amber" strokeWidth={1.5} />
+                  <h3 className="text-sm font-semibold text-text-primary font-display">{t('common.pending')} <span className="text-text-muted font-normal">({pending.length})</span></h3>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                  {pending.map(renderCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Active */}
+            {active.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
+                  <h3 className="text-sm font-semibold text-text-primary font-display">{t('common.active')} <span className="text-text-muted font-normal">({active.length})</span></h3>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                  {active.map(renderCard)}
+                </div>
+              </div>
+            )}
+
+            {/* Revoked */}
+            {revoked.length > 0 && (
+              <div className="space-y-3">
+                <div
+                  className="flex items-center gap-2 cursor-pointer select-none"
+                  onClick={() => setRevokedGroupExpanded((v) => !v)}
+                >
+                  <Lock className="w-4 h-4 text-accent-coral" strokeWidth={1.5} />
+                  <h3 className="text-sm font-semibold text-text-primary font-display">{t('common.revoked')} <span className="text-text-muted font-normal">({revoked.length})</span></h3>
+                  {revokedGroupExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  )}
+                </div>
+                {revokedGroupExpanded && (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                    {revoked.map(renderCard)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

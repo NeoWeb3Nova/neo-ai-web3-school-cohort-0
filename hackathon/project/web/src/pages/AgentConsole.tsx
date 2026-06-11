@@ -374,15 +374,18 @@ export default function AgentConsole() {
               <select
                 value={assignmentCardId}
                 onChange={(e) => setAssignmentCardId(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-im text-sm input-kinpaku"
+                className="flex-1 min-w-0 px-3 py-2 rounded-im text-sm input-kinpaku"
               >
                 <option value="">{t('agent.selectCardToAssign')}</option>
-                {assignableCards.map((c) => (
-                  <option key={c.card_id} value={c.card_id}>
-                    {(c.card_name || c.agent_name)} — ${c.budget.spent.toFixed(0)} / ${c.budget.monthly_max}
-                    {c.assigned_agent_id === selectedEmployeeId ? ` · ${t('agent.alreadyAssigned')}` : ''}
-                  </option>
-                ))}
+                {assignableCards.map((c) => {
+                  const fullLabel = `${c.card_name || c.agent_name} — $${c.budget.spent.toFixed(0)} / $${c.budget.monthly_max}${c.assigned_agent_id === selectedEmployeeId ? ` · ${t('agent.alreadyAssigned')}` : ''}`;
+                  return (
+                    <option key={c.card_id} value={c.card_id} title={fullLabel}>
+                      {c.card_name || c.agent_name}
+                      {c.assigned_agent_id === selectedEmployeeId ? ` (${t('agent.alreadyAssigned')})` : ''}
+                    </option>
+                  );
+                })}
               </select>
               <button
                 type="button"
@@ -397,11 +400,20 @@ export default function AgentConsole() {
               <EmployeeAvatar employee={selectedEmployee} label={selectedEmployee?.name} size="sm" />
               <div className="min-w-0">
                 <p className="font-medium text-text-primary">{t('agent.assignedCards')}</p>
-                <p className="mt-1 truncate">
-                  {cardsForSelectedEmployee.length > 0
-                    ? cardsForSelectedEmployee.map((c) => c.card_name || c.agent_name).join(' · ')
-                    : t('agent.noAssignedCardsForEmployee')}
-                </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {cardsForSelectedEmployee.length > 0 ? (
+                    cardsForSelectedEmployee.map((c) => (
+                      <span
+                        key={c.card_id}
+                        className="inline-block px-1.5 py-0.5 rounded bg-bg-elevated text-text-primary text-[11px]"
+                      >
+                        {c.card_name || c.agent_name}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-text-muted">{t('agent.noAssignedCardsForEmployee')}</span>
+                  )}
+                </div>
                 {selectedEmployee && (
                   <p className="mt-1 text-text-muted truncate">ERC-8004: {selectedEmployee.erc8004_agent_id}</p>
                 )}

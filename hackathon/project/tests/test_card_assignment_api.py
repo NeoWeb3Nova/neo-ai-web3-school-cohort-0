@@ -31,8 +31,8 @@ def base_card_payload():
         "created_at": "2026-06-11T00:00:00+00:00",
         "expires_at": "2026-07-11T00:00:00+00:00",
         "api_key": "",
-        "assigned_agent_id": "agent-alpha-research",
-        "assigned_agent_name": "Alpha Research Agent",
+        "assigned_agent_id": "agent-vega-research",
+        "assigned_agent_name": "Vega Research Agent",
         "assigned_at": "2026-06-11T01:00:00+00:00",
     }
 
@@ -41,21 +41,21 @@ def test_card_response_exposes_assignment_fields():
     card = CardResponse(**base_card_payload())
 
     assert card.card_name == "Research API Card"
-    assert card.assigned_agent_id == "agent-alpha-research"
-    assert card.assigned_agent_name == "Alpha Research Agent"
+    assert card.assigned_agent_id == "agent-vega-research"
+    assert card.assigned_agent_name == "Vega Research Agent"
     assert card.assigned_at == "2026-06-11T01:00:00+00:00"
 
 
 def test_payment_request_requires_agent_id():
     req = PaymentRequest(
-        agent_id="agent-alpha-research",
+        agent_id="agent-vega-research",
         card_id="card-test",
         vendor="BlockRun AI Gateway",
         amount=1.5,
         purpose="x402 paid API call",
     )
 
-    assert req.agent_id == "agent-alpha-research"
+    assert req.agent_id == "agent-vega-research"
 
 
 def first_provider():
@@ -78,23 +78,23 @@ def test_mock_assign_card_persists_employee_assignment():
     caw = MockCAWClient()
     card_id = create_active_card(caw)
 
-    result = caw.assign_card(card_id, "agent-alpha-research", "Alpha Research Agent")
+    result = caw.assign_card(card_id, "agent-vega-research", "Vega Research Agent")
     card = caw.get_card(card_id)
 
     assert result["status"] == "ASSIGNED"
-    assert card["assigned_agent_id"] == "agent-alpha-research"
-    assert card["assigned_agent_name"] == "Alpha Research Agent"
+    assert card["assigned_agent_id"] == "agent-vega-research"
+    assert card["assigned_agent_name"] == "Vega Research Agent"
     assert card["assigned_at"]
 
 
 def test_mock_payment_rejects_unassigned_agent():
     caw = MockCAWClient()
     card_id = create_active_card(caw)
-    caw.assign_card(card_id, "agent-alpha-research", "Alpha Research Agent")
+    caw.assign_card(card_id, "agent-vega-research", "Vega Research Agent")
 
     response = caw.submit_payment(
         card_id=card_id,
-        agent_id="agent-beta-growth",
+        agent_id="agent-lyra-growth",
         vendor=first_provider()["name"],
         amount=1.0,
         metadata={"purpose": "wrong employee tries card"},
@@ -107,11 +107,11 @@ def test_mock_payment_rejects_unassigned_agent():
 def test_mock_payment_approves_assigned_agent():
     caw = MockCAWClient()
     card_id = create_active_card(caw)
-    caw.assign_card(card_id, "agent-alpha-research", "Alpha Research Agent")
+    caw.assign_card(card_id, "agent-vega-research", "Vega Research Agent")
 
     response = caw.submit_payment(
         card_id=card_id,
-        agent_id="agent-alpha-research",
+        agent_id="agent-vega-research",
         vendor=first_provider()["name"],
         amount=1.0,
         metadata={"purpose": "assigned employee paid API call"},
@@ -134,17 +134,17 @@ def test_assign_card_endpoint_persists_assignment():
     client.post(f"/cards/{created['card_id']}/approve")
 
     response = client.post(f"/cards/{created['card_id']}/assign", json={
-        "agent_id": "agent-alpha-research",
-        "agent_name": "Alpha Research Agent",
+        "agent_id": "agent-vega-research",
+        "agent_name": "Vega Research Agent",
     })
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["assigned_agent_id"] == "agent-alpha-research"
+    assert payload["assigned_agent_id"] == "agent-vega-research"
 
     card = client.get(f"/cards/{created['card_id']}").json()
-    assert card["assigned_agent_id"] == "agent-alpha-research"
-    assert card["assigned_agent_name"] == "Alpha Research Agent"
+    assert card["assigned_agent_id"] == "agent-vega-research"
+    assert card["assigned_agent_name"] == "Vega Research Agent"
 
 
 def test_payments_endpoint_rejects_unassigned_employee():
@@ -160,12 +160,12 @@ def test_payments_endpoint_rejects_unassigned_employee():
     }).json()
     client.post(f"/cards/{created['card_id']}/approve")
     client.post(f"/cards/{created['card_id']}/assign", json={
-        "agent_id": "agent-alpha-research",
-        "agent_name": "Alpha Research Agent",
+        "agent_id": "agent-vega-research",
+        "agent_name": "Vega Research Agent",
     })
 
     response = client.post("/payments", json={
-        "agent_id": "agent-beta-growth",
+        "agent_id": "agent-lyra-growth",
         "card_id": created["card_id"],
         "vendor": provider["name"],
         "amount": 1.0,
@@ -190,12 +190,12 @@ def test_payments_endpoint_approves_assigned_employee():
     }).json()
     client.post(f"/cards/{created['card_id']}/approve")
     client.post(f"/cards/{created['card_id']}/assign", json={
-        "agent_id": "agent-alpha-research",
-        "agent_name": "Alpha Research Agent",
+        "agent_id": "agent-vega-research",
+        "agent_name": "Vega Research Agent",
     })
 
     response = client.post("/payments", json={
-        "agent_id": "agent-alpha-research",
+        "agent_id": "agent-vega-research",
         "card_id": created["card_id"],
         "vendor": provider["name"],
         "amount": 1.0,
