@@ -231,6 +231,12 @@ export default function Cards() {
   const progressPct = (spent: number, max: number) =>
     Math.min((spent / max) * 100, 100);
 
+  const formatCardDate = (value?: string | null) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
+  };
+
   const renderErc8004CoreInfo = (vendor: Vendor) => {
     const agentIdentity = vendor.erc8004_agent_id || '';
     const agentParts = agentIdentity.split(':');
@@ -816,6 +822,10 @@ export default function Cards() {
           const normalizedStatus = normalizeCardStatus(card.status);
           const isExpanded = expandedCard === card.card_id;
           const pct = progressPct(card.budget.spent, card.budget.monthly_max);
+          const expiryDate = card.time_window?.end || card.expires_at;
+          const allowedHours = card.time_window
+            ? `${card.time_window.allowed_hours_start} — ${card.time_window.allowed_hours_end}`
+            : '00:00 — 23:59';
 
           return (
             <div
@@ -888,7 +898,7 @@ export default function Cards() {
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
                   <div className="text-center p-2 rounded-im">
                     <p className="text-xs text-text-muted">{t('cards.singleTx')}</p>
                     <p className="text-sm font-semibold text-text-primary">
@@ -905,6 +915,12 @@ export default function Cards() {
                     <p className="text-xs text-text-muted">{t('cards.vendors')}</p>
                     <p className="text-sm font-semibold text-text-primary">
                       {card.vendor_whitelist.length}
+                    </p>
+                  </div>
+                  <div className="text-center p-2 rounded-im">
+                    <p className="text-xs text-text-muted">{t('cards.expires')}</p>
+                    <p className="text-sm font-semibold text-text-primary">
+                      {formatCardDate(expiryDate)}
                     </p>
                   </div>
                 </div>
@@ -984,30 +1000,18 @@ export default function Cards() {
                     </div>
                   </div>
 
-                  {/* Time Window */}
+                  {/* Effective Period */}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs">
-                    {card.time_window ? (
-                      <>
-                        <div className="flex items-center gap-1.5 text-text-secondary">
-                          <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
-                          <span>
-                            {new Date(card.time_window.start).toLocaleDateString()} —{' '}
-                            {new Date(card.time_window.end).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-text-secondary">
-                          <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
-                          <span>
-                            {card.time_window.allowed_hours_start} — {card.time_window.allowed_hours_end}
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-text-secondary">
-                        <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
-                        <span>{t('cards.cooldownPeriod')}: {card.cooldown_hours}h</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 text-text-secondary">
+                      <Calendar className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+                      <span>
+                        {t('cards.effectivePeriod')}: {formatCardDate(card.time_window?.start || card.created_at)} — {formatCardDate(expiryDate)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-text-secondary">
+                      <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={1.5} />
+                      <span>{t('cards.allowedHours')}: {allowedHours}</span>
+                    </div>
                   </div>
 
                   {/* API Key */}

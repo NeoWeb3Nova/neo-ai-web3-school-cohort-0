@@ -267,6 +267,12 @@ def test_real_caw_list_cards_preserves_local_x402_vendor_metadata_after_api_refr
                 }
             ],
             "cooldown_hours": 6,
+            "time_window": {
+                "start": "2026-06-10T00:00:00+00:00",
+                "end": "2026-07-10T00:00:00+00:00",
+                "allowed_hours_start": "00:00",
+                "allowed_hours_end": "23:59",
+            },
             "created_at": "2026-06-10T00:00:00+00:00",
             "expires_at": "2026-07-10T00:00:00+00:00",
             "api_key": "",
@@ -320,12 +326,47 @@ def test_real_caw_list_cards_preserves_local_x402_vendor_metadata_after_api_refr
     assert cards[0]["x402_url"] == "https://blockrun.ai"
     assert cards[0]["erc8004_agent_id"] == "base:blockrun-ai-gateway"
     assert cards[0]["budget"]["monthly_max"] == 200.0
+    assert cards[0]["cooldown_hours"] == 6
+    assert cards[0]["expires_at"] == "2026-07-10T00:00:00+00:00"
+    assert cards[0]["time_window"]["end"] == "2026-07-10T00:00:00+00:00"
 
 
 def test_extract_list_items_accepts_caw_list_shapes():
     assert RealCAWClient._extract_list_items([{"id": "a"}, "bad"], "pacts") == [{"id": "a"}]
     assert RealCAWClient._extract_list_items({"pacts": [{"id": "b"}]}, "pacts") == [{"id": "b"}]
     assert RealCAWClient._extract_list_items({"items": [{"id": "c"}]}, "pacts") == [{"id": "c"}]
+
+
+def test_real_caw_pact_to_card_recovers_time_window_from_completion_condition():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client._owner = "OPC Owner"
+
+    card = client._pact_to_card_dict(
+        {
+            "pact_id": "pact-time-1",
+            "intent": "Timed Agent",
+            "status": "APPROVED",
+            "created_at": "2026-06-10T00:00:00+00:00",
+            "spec": {
+                "completion_conditions": [{"type": "time_elapsed", "threshold": str(30 * 86400)}],
+                "policies": [
+                    {
+                        "rules": {
+                            "deny_if": {
+                                "amount_usd_gt": "25",
+                                "usage_limits": {"rolling_30d": {"amount_usd_gt": "100"}},
+                            },
+                            "when": {"destination_address_in": []},
+                        }
+                    }
+                ],
+            },
+        }
+    )
+
+    assert card["expires_at"] == "2026-07-10T00:00:00+00:00"
+    assert card["time_window"]["start"] == "2026-06-10T00:00:00+00:00"
+    assert card["time_window"]["end"] == "2026-07-10T00:00:00+00:00"
 
 
 def test_real_caw_transaction_hash_none_normalizes_to_empty_string():

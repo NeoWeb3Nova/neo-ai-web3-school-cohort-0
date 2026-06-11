@@ -275,6 +275,12 @@ class RealCAWClient:
             },
             "vendor_whitelist": vendor_whitelist,
             "cooldown_hours": cooldown_hours,
+            "time_window": {
+                "start": now.isoformat(),
+                "end": expires.isoformat(),
+                "allowed_hours_start": "00:00",
+                "allowed_hours_end": "23:59",
+            },
             "created_at": now.isoformat(),
             "expires_at": expires.isoformat(),
             "api_key": "",
@@ -848,6 +854,9 @@ class RealCAWClient:
             "budget",
             "vendor_whitelist",
             "cooldown_hours",
+            "time_window",
+            "created_at",
+            "expires_at",
             "x402_enabled",
             "x402_url",
             "erc8004_agent_id",
@@ -865,7 +874,18 @@ class RealCAWClient:
                     if local_names and all(name.endswith("...") for name in api_names if name):
                         merged[key] = local_value
                 continue
-            if key in ("agent_name", "card_name", "agent_id", "assigned_agent_id", "assigned_agent_name", "assigned_at") and local_value not in (None, ""):
+            if key in (
+                "agent_name",
+                "card_name",
+                "agent_id",
+                "assigned_agent_id",
+                "assigned_agent_name",
+                "assigned_at",
+                "cooldown_hours",
+                "time_window",
+                "created_at",
+                "expires_at",
+            ) and local_value not in (None, "", [], {}):
                 merged[key] = local_value
                 continue
             if local_value not in (None, "", [], {}) and api_value in (None, "", [], {}, 0, 0.0):
@@ -1001,6 +1021,29 @@ class RealCAWClient:
                     "category": "api",
                 })
 
+        created_at = pact.get("created_at") or datetime.now(timezone.utc).isoformat()
+        expires_at = pact.get("expires_at") or ""
+        if not expires_at:
+            for condition in spec.get("completion_conditions", []):
+                if condition.get("type") == "time_elapsed":
+                    try:
+                        expires_at = (
+                            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                            + timedelta(seconds=int(float(condition.get("threshold", 0))))
+                        ).isoformat()
+                    except (TypeError, ValueError):
+                        expires_at = ""
+                    break
+
+        time_window = None
+        if expires_at:
+            time_window = {
+                "start": created_at,
+                "end": expires_at,
+                "allowed_hours_start": "00:00",
+                "allowed_hours_end": "23:59",
+            }
+
         return {
             "card_id": pid,
             "agent_name": pact.get("intent", "Unknown Agent"),
@@ -1019,8 +1062,9 @@ class RealCAWClient:
             },
             "vendor_whitelist": vendor_whitelist,
             "cooldown_hours": 12,
-            "created_at": pact.get("created_at") or datetime.now(timezone.utc).isoformat(),
-            "expires_at": pact.get("expires_at") or "",
+            "time_window": time_window,
+            "created_at": created_at,
+            "expires_at": expires_at,
             "api_key": "",
             "x402_enabled": any(bool(v.get("x402_url")) for v in vendor_whitelist),
             "x402_url": next((v.get("x402_url") for v in vendor_whitelist if v.get("x402_url")), None),
