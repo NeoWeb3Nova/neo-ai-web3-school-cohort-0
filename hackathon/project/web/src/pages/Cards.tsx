@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   CreditCard,
   Plus,
@@ -532,13 +533,13 @@ export default function Cards() {
       )}
 
       {/* ERC-8004 Provider Details Modal */}
-      {erc8004DetailsVendor && (
+      {erc8004DetailsVendor && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[1000] grid place-items-center bg-black/60 p-4 overflow-y-auto"
           onClick={() => setErc8004DetailsVendor(null)}
         >
           <div
-            className="glass-card rounded-im p-5 max-w-xl w-full border border-border-default shadow-2xl"
+            className="glass-card rounded-im p-5 max-w-xl w-full max-h-[calc(100vh-2rem)] overflow-y-auto border border-border-default shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3 mb-4">
@@ -557,7 +558,8 @@ export default function Cards() {
             </div>
             {renderErc8004CoreInfo(erc8004DetailsVendor)}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {loading && (
