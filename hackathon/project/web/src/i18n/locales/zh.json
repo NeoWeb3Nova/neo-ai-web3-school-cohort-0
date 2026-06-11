@@ -121,6 +121,8 @@
     "revokeCard": "撤销卡片",
     "revokeConfirmTitle": "撤销卡片",
     "revokeConfirmDesc": "此操作将永久使该卡片的 API 密钥失效。正在使用该密钥的所有服务将立即停止。此操作不可撤销。",
+    "approveInAppTitle": "App 端审批",
+    "approveInAppDesc": "只有 CAW App 的拥有者才能审批待处理的 Pact。请在 CAW App 中手动审批此 Pact，前端将自动同步状态。",
     "revokeInAppTitle": "App 端吊销",
     "revokeInAppDesc": "当前 API Key 为 Agent 级别，无法直接吊销。请在 CAW App 中手动吊销此 Pact，前端将自动同步状态。",
     "revokeInAppConfirm": "我已前往 App 吊销",
@@ -200,7 +202,8 @@
     "assignedCards": "已分配卡片",
     "noAssignedCards": "当前员工还没有分配权限卡",
     "noAssignedCardsDesc": "请先在上方选择一张已激活卡片并点击确认分配，然后再发起 x402 服务调用。",
-    "noAssignedCardsForEmployee": "这个员工还没有分配卡片"
+    "noAssignedCardsForEmployee": "这个员工还没有分配卡片",
+    "noVendorsOnCard": "此卡片未配置供应商白名单。请前往卡片页面编辑并添加供应商。"
   },
   "attack": {
     "title": "威胁模拟中心",

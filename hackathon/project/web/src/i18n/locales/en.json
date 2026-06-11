@@ -121,6 +121,8 @@
     "revokeCard": "Revoke Card",
     "revokeConfirmTitle": "Revoke Card",
     "revokeConfirmDesc": "This will permanently invalidate this card's API key. Any running services using this key will fail immediately. This action cannot be undone.",
+    "approveInAppTitle": "Approve in App",
+    "approveInAppDesc": "Only the CAW App owner can approve pending Pacts. Please manually approve this Pact in the CAW App; the frontend will automatically sync the status.",
     "revokeInAppTitle": "Revoke in App",
     "revokeInAppDesc": "The current API key is an Agent-level key and cannot revoke directly. Please manually revoke this Pact in the CAW App; the frontend will automatically sync the status.",
     "revokeInAppConfirm": "I have gone to the App to revoke",
@@ -200,7 +202,8 @@
     "assignedCards": "Assigned cards",
     "noAssignedCards": "This employee has no assigned permission card",
     "noAssignedCardsDesc": "Choose an active card above and confirm assignment before starting an x402 service call.",
-    "noAssignedCardsForEmployee": "This employee has no assigned cards"
+    "noAssignedCardsForEmployee": "This employee has no assigned cards",
+    "noVendorsOnCard": "This card has no vendor whitelist. Please edit the card in Cards page to add vendors."
   },
   "attack": {
     "title": "Threat Simulation Center",

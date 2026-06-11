@@ -88,6 +88,16 @@ export default function AgentConsole() {
   const selectedVendorMeta = card?.vendor_whitelist.find((v) => v.name === effectiveVendor) || card?.vendor_whitelist[0];
   const trustRequirements = displayCard?.trust_requirements?.length ? displayCard.trust_requirements : ERC8004_TRUST_REQUIREMENTS;
 
+  // Reset vendor when card changes so the dropdown stays in sync with the card's whitelist
+  useEffect(() => {
+    if (card) {
+      const firstVendor = card.vendor_whitelist?.[0]?.name ?? '';
+      setVendor(firstVendor);
+    } else {
+      setVendor('');
+    }
+  }, [card?.card_id]);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -480,25 +490,32 @@ export default function AgentConsole() {
 
               <div>
                 <label className="text-xs text-text-secondary mb-1.5 block">{t('agent.vendor')}</label>
-                <select
-                  value={effectiveVendor}
-                  onChange={(e) => {
-                    setVendor(e.target.value);
-                    setTouched((prev) => ({ ...prev, vendor: true }));
-                  }}
-                  className={`w-full px-3 py-2 rounded-im text-sm input-kinpaku ${errors.vendor ? 'error' : ''}`}
-                >
-                  {vendorOptions.map((v) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
+                {vendorOptions.length === 0 && card ? (
+                  <div className="rounded-im border border-accent-amber/30 bg-accent-amber/10 px-3 py-2 text-xs text-accent-amber">
+                    {t('agent.noVendorsOnCard') || 'This card has no vendor whitelist. Please edit the card in Cards page to add vendors.'}
+                    <Link to="/cards" className="underline ml-1">{t('agent.goToCards') || 'Go to Cards'}</Link>
+                  </div>
+                ) : (
+                  <select
+                    value={effectiveVendor}
+                    onChange={(e) => {
+                      setVendor(e.target.value);
+                      setTouched((prev) => ({ ...prev, vendor: true }));
+                    }}
+                    className={`w-full px-3 py-2 rounded-im text-sm input-kinpaku ${errors.vendor ? 'error' : ''}`}
+                  >
+                    {vendorOptions.map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                )}
                 {errors.vendor && (
                   <p className="mt-1.5 text-[11px] text-accent-coral flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" strokeWidth={2} />
                     {errors.vendor}
                   </p>
                 )}
-                {selectedVendorMeta && (
+                {selectedVendorMeta && vendorOptions.length > 0 && (
                   <div className="mt-2 rounded-im border border-border-default bg-bg-primary p-2 text-[10px] text-text-muted">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-text-primary">{selectedVendorMeta.x402_url ? 'x402 provider' : 'Legacy provider'}</span>

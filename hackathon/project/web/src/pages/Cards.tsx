@@ -61,6 +61,8 @@ export default function Cards() {
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [pendingGroupExpanded, setPendingGroupExpanded] = useState(true);
+  const [activeGroupExpanded, setActiveGroupExpanded] = useState(true);
   const [revokedGroupExpanded, setRevokedGroupExpanded] = useState(false);
   const [showNewCard, setShowNewCard] = useState(false);
   const [newCardName, setNewCardName] = useState('General Policy Card');
@@ -74,6 +76,7 @@ export default function Cards() {
   const [manualProviderError, setManualProviderError] = useState('');
   const [newCardTouched, setNewCardTouched] = useState<Record<string, boolean>>({});
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState<string | null>(null);
   const [erc8004DetailsVendor, setErc8004DetailsVendor] = useState<Vendor | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -102,18 +105,6 @@ export default function Cards() {
 
   const toggleExpand = (cardId: string) => {
     setExpandedCard(expandedCard === cardId ? null : cardId);
-  };
-
-  const handleApprove = async (cardId: string) => {
-    setActionLoading(cardId);
-    try {
-      await cawApi.approveCard(cardId);
-      await loadCards();
-    } catch {
-      alert(t('common.error'));
-    } finally {
-      setActionLoading(null);
-    }
   };
 
   const newCardErrors = (() => {
@@ -705,6 +696,42 @@ export default function Cards() {
         </div>
       )}
 
+      {/* Approve Confirmation Modal */}
+      {confirmApprove && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setConfirmApprove(null)}
+        >
+          <div
+            className="glass-card rounded-im p-6 max-w-sm w-full border border-border-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-im bg-accent-patina/10 flex items-center justify-center border border-accent-patina/20">
+                <CheckCircle className="w-5 h-5 text-accent-patina" strokeWidth={1.5} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">{t('cards.approveInAppTitle')}</h3>
+                <p className="text-xs text-text-secondary">
+                  {cards.find((c) => c.card_id === confirmApprove)?.agent_name}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-text-secondary leading-relaxed mb-5">
+              {t('cards.approveInAppDesc')}
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setConfirmApprove(null)}
+                className="flex-1 px-4 py-2 rounded-im text-sm btn-ghost"
+              >
+                {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Revoke Confirmation Modal */}
       {confirmRevoke && (
         <div
@@ -1017,13 +1044,12 @@ export default function Cards() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleApprove(card.card_id);
+                          setConfirmApprove(card.card_id);
                         }}
-                        disabled={actionLoading === card.card_id}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-patina/10 text-accent-patina rounded-im text-xs font-semibold hover:bg-accent-patina/20 border border-accent-patina/30 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-patina/10 text-accent-patina rounded-im text-xs font-semibold hover:bg-accent-patina/20 border border-accent-patina/30 transition-colors"
                       >
                         <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.5} />
-                        {actionLoading === card.card_id ? t('common.processing') : t('cards.approve')}
+                        {t('cards.approve')}
                       </button>
                     )}
                     {normalizedStatus === 'ACTIVE' && (
@@ -1069,26 +1095,46 @@ export default function Cards() {
             {/* Pending Approval */}
             {pending.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
+                <div
+                  className="flex items-center gap-2 cursor-pointer select-none"
+                  onClick={() => setPendingGroupExpanded((v) => !v)}
+                >
                   <Clock className="w-4 h-4 text-accent-amber" strokeWidth={1.5} />
                   <h3 className="text-sm font-semibold text-text-primary font-display">{t('common.pending')} <span className="text-text-muted font-normal">({pending.length})</span></h3>
+                  {pendingGroupExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  )}
                 </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
-                  {pending.map(renderCard)}
-                </div>
+                {pendingGroupExpanded && (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                    {pending.map(renderCard)}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Active */}
             {active.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
+                <div
+                  className="flex items-center gap-2 cursor-pointer select-none"
+                  onClick={() => setActiveGroupExpanded((v) => !v)}
+                >
                   <CheckCircle className="w-4 h-4 text-accent-patina" strokeWidth={1.5} />
                   <h3 className="text-sm font-semibold text-text-primary font-display">{t('common.active')} <span className="text-text-muted font-normal">({active.length})</span></h3>
+                  {activeGroupExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-text-muted ml-auto" strokeWidth={1.5} />
+                  )}
                 </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
-                  {active.map(renderCard)}
-                </div>
+                {activeGroupExpanded && (
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:gap-4">
+                    {active.map(renderCard)}
+                  </div>
+                )}
               </div>
             )}
 
