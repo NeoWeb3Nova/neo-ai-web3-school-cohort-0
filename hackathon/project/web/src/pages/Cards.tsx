@@ -175,6 +175,25 @@ export default function Cards() {
           </span>
         </div>
 
+        <div className="p-3 rounded-im bg-bg-primary border border-accent-gold/20">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-accent-gold">Statistics Overview</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+            <div className="rounded-im border border-border-default p-2">
+              <p className="text-sm font-semibold text-text-primary">5.0/5.0</p>
+              <p className="mt-0.5 text-[10px] text-text-muted">Average Score</p>
+            </div>
+            <div className="rounded-im border border-border-default p-2">
+              <p className="text-sm font-semibold text-text-primary">621</p>
+              <p className="mt-0.5 text-[10px] text-text-muted">Total Feedback</p>
+            </div>
+            <div className="rounded-im border border-border-default p-2">
+              <p className="text-sm font-semibold text-text-primary">93.83</p>
+              <p className="mt-0.5 text-[10px] text-text-muted">Overall Score</p>
+              <p className="mt-0.5 text-[10px] text-accent-patina">(99/100)</p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <div className="p-3 rounded-im bg-bg-primary border border-border-default">
             <p className="text-[10px] uppercase tracking-wide text-text-muted">Chain</p>
