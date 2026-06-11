@@ -159,7 +159,7 @@ export default function Cards() {
   };
 
   const handleAddManualProvider = () => {
-    const requiredFields: Array<keyof ManualProviderForm> = ['name', 'address', 'x402_url', 'chain'];
+    const requiredFields: Array<keyof ManualProviderForm> = ['name', 'address', 'chain'];
     const missing = requiredFields.filter((field) => !manualProvider[field].trim());
     if (missing.length > 0) {
       setManualProviderError(`Required for CAW x402 enforcement: ${missing.join(', ')}`);
@@ -454,130 +454,6 @@ export default function Cards() {
           {/* Vendor whitelist */}
           <div className="mt-4">
             <label className="text-xs text-text-secondary mb-2 block">x402 Provider Whitelist</label>
-            <div className="mb-3 p-3 rounded-im bg-bg-primary border border-border-default">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-xs font-semibold text-text-primary">Add custom x402 provider</p>
-                  <p className="mt-1 text-[11px] text-text-muted">
-                    Required CAW policy fields: provider name, payee address, x402 endpoint, and chain. ERC-8004 details are optional.
-                  </p>
-                </div>
-                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] bg-accent-gold/10 text-accent-gold border border-accent-gold/20">
-                  manual
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Provider name *</label>
-                  <input
-                    type="text"
-                    value={manualProvider.name}
-                    onChange={(e) => updateManualProvider('name', e.target.value)}
-                    placeholder="Weather API"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Payee address *</label>
-                  <input
-                    type="text"
-                    value={manualProvider.address}
-                    onChange={(e) => updateManualProvider('address', e.target.value)}
-                    placeholder="0x..."
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">x402 endpoint *</label>
-                  <input
-                    type="url"
-                    value={manualProvider.x402_url}
-                    onChange={(e) => updateManualProvider('x402_url', e.target.value)}
-                    placeholder="https://api.example.com/x402"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Chain *</label>
-                  <input
-                    type="text"
-                    value={manualProvider.chain}
-                    onChange={(e) => updateManualProvider('chain', e.target.value)}
-                    placeholder="BASE_ETH"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Category</label>
-                  <input
-                    type="text"
-                    value={manualProvider.category}
-                    onChange={(e) => updateManualProvider('category', e.target.value)}
-                    placeholder="data / api / infra"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Price USDC/call</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.0001}
-                    value={manualProvider.pricing_usdc}
-                    onChange={(e) => updateManualProvider('pricing_usdc', e.target.value)}
-                    placeholder="0.01"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">ERC-8004 agent ID</label>
-                  <input
-                    type="text"
-                    value={manualProvider.erc8004_agent_id}
-                    onChange={(e) => updateManualProvider('erc8004_agent_id', e.target.value)}
-                    placeholder="base:agent-name"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">ERC-8004 registry URL</label>
-                  <input
-                    type="url"
-                    value={manualProvider.erc8004_registry_url}
-                    onChange={(e) => updateManualProvider('erc8004_registry_url', e.target.value)}
-                    placeholder="https://8004scan.io/..."
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div className="md:col-span-2 xl:col-span-3">
-                  <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Description</label>
-                  <input
-                    type="text"
-                    value={manualProvider.description}
-                    onChange={(e) => updateManualProvider('description', e.target.value)}
-                    placeholder="Optional note shown in provider details"
-                    className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
-                  />
-                </div>
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={handleAddManualProvider}
-                    className="w-full px-3 py-2 rounded-im text-xs btn-ghost border border-accent-patina/30 text-accent-patina hover:bg-accent-patina/10"
-                  >
-                    Add to whitelist
-                  </button>
-                </div>
-              </div>
-
-              {manualProviderError && (
-                <p className="mt-2 text-[11px] text-accent-coral flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" strokeWidth={2} />
-                  {manualProviderError}
-                </p>
-              )}
-            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {availableVendors.map((v) => {
                 const checked = selectedVendors.has(v.name);
@@ -636,6 +512,142 @@ export default function Cards() {
                 );
               })}
             </div>
+
+            <details className="mt-3 rounded-im bg-bg-primary border border-border-default overflow-hidden group">
+              <summary className="w-full flex items-center justify-between gap-3 p-3 text-left hover:bg-bg-secondary/40 transition-colors cursor-pointer list-none">
+                <div>
+                  <p className="text-xs font-semibold text-text-primary">Manual provider</p>
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    Optional fallback: add a provider not listed above. CAW enforcement requires only name, destination address, and chain.
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-accent-gold/10 text-accent-gold border border-accent-gold/20">
+                    collapsed
+                  </span>
+                  <ChevronDown className="w-4 h-4 text-text-muted group-open:hidden" strokeWidth={1.5} />
+                  <ChevronUp className="hidden w-4 h-4 text-text-muted group-open:block" strokeWidth={1.5} />
+                </div>
+              </summary>
+
+              <div className="p-3 border-t border-border-default">
+                  <div className="mb-3 p-2 rounded-im bg-accent-patina/5 border border-accent-patina/15 text-[11px] text-text-secondary leading-relaxed">
+                    CAW Pact policy checks <span className="text-text-primary">destination_address_in</span> as <span className="text-text-primary">chain_id + address</span>. x402 endpoint URL is optional metadata for service discovery/payment negotiation, not a CAW whitelist predicate.
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Provider name *</label>
+                      <input
+                        type="text"
+                        value={manualProvider.name}
+                        onChange={(e) => updateManualProvider('name', e.target.value)}
+                        placeholder="Weather API"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Payee address *</label>
+                      <input
+                        type="text"
+                        value={manualProvider.address}
+                        onChange={(e) => updateManualProvider('address', e.target.value)}
+                        placeholder="0x..."
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Chain *</label>
+                      <input
+                        type="text"
+                        value={manualProvider.chain}
+                        onChange={(e) => updateManualProvider('chain', e.target.value)}
+                        placeholder="BASE_ETH"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">x402 endpoint</label>
+                      <input
+                        type="url"
+                        value={manualProvider.x402_url}
+                        onChange={(e) => updateManualProvider('x402_url', e.target.value)}
+                        placeholder="https://api.example.com/x402"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Category</label>
+                      <input
+                        type="text"
+                        value={manualProvider.category}
+                        onChange={(e) => updateManualProvider('category', e.target.value)}
+                        placeholder="data / api / infra"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Price USDC/call</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.0001}
+                        value={manualProvider.pricing_usdc}
+                        onChange={(e) => updateManualProvider('pricing_usdc', e.target.value)}
+                        placeholder="0.01"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">ERC-8004 agent ID</label>
+                      <input
+                        type="text"
+                        value={manualProvider.erc8004_agent_id}
+                        onChange={(e) => updateManualProvider('erc8004_agent_id', e.target.value)}
+                        placeholder="base:agent-name"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">ERC-8004 registry URL</label>
+                      <input
+                        type="url"
+                        value={manualProvider.erc8004_registry_url}
+                        onChange={(e) => updateManualProvider('erc8004_registry_url', e.target.value)}
+                        placeholder="https://8004scan.io/..."
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div className="md:col-span-2 xl:col-span-3">
+                      <label className="text-[10px] uppercase tracking-wide text-text-muted mb-1 block">Description</label>
+                      <input
+                        type="text"
+                        value={manualProvider.description}
+                        onChange={(e) => updateManualProvider('description', e.target.value)}
+                        placeholder="Optional note shown in provider details"
+                        className="w-full px-3 py-2 rounded-im text-xs input-kinpaku"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={handleAddManualProvider}
+                        className="w-full px-3 py-2 rounded-im text-xs btn-ghost border border-accent-patina/30 text-accent-patina hover:bg-accent-patina/10"
+                      >
+                        Add to whitelist
+                      </button>
+                    </div>
+                  </div>
+
+                  {manualProviderError && (
+                    <p className="mt-2 text-[11px] text-accent-coral flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" strokeWidth={2} />
+                      {manualProviderError}
+                    </p>
+                  )}
+              </div>
+            </details>
+
             {newCardErrors.vendors && (
               <p className="mt-1.5 text-[11px] text-accent-coral flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" strokeWidth={2} />

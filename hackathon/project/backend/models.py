@@ -35,15 +35,15 @@ class CreateCardRequest(BaseModel):
     def validate_x402_provider_whitelist(cls, value: Any) -> List[Dict[str, Any]]:
         """Normalize provider entries and require CAW-enforceable x402 core fields.
 
-        Core fields are the data CAW needs to build/enforce the payment policy:
-        display/service name, payee destination address, x402 endpoint, and chain.
-        UI metadata such as category, description, pricing, source, and ERC-8004
-        links remains optional.
+        Core fields are the data CAW needs to build/enforce the transfer policy:
+        display/service name plus destination {chain, address}. The x402 endpoint
+        is useful service metadata for discovery/payment negotiation, but it is not
+        part of CAW's destination whitelist predicate.
         """
         if not isinstance(value, list) or not value:
             raise ValueError("vendor_whitelist must contain at least one x402 provider")
 
-        required_fields = ("name", "address", "x402_url", "chain")
+        required_fields = ("name", "address", "chain")
         normalized: List[Dict[str, Any]] = []
         for index, provider in enumerate(value):
             if not isinstance(provider, dict):

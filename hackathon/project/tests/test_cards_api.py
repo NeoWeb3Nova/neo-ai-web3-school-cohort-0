@@ -27,8 +27,8 @@ def test_create_card_request_accepts_manual_x402_provider_with_optional_metadata
             {
                 "name": "Manual Weather API",
                 "address": "0x1234567890abcdef1234567890abcdef12345678",
-                "x402_url": "https://weather.example.com/x402",
                 "chain": "BASE_ETH",
+                "x402_url": "https://weather.example.com/x402",
                 "category": "data",
                 "pricing_usdc": 0.02,
                 "description": "Optional operator note",
@@ -41,6 +41,27 @@ def test_create_card_request_accepts_manual_x402_provider_with_optional_metadata
     assert provider["source"] == "manual"
     assert provider["category"] == "data"
     assert provider["description"] == "Optional operator note"
+    assert provider["x402_url"] == "https://weather.example.com/x402"
+
+
+def test_create_card_request_accepts_manual_provider_without_x402_url():
+    req = CreateCardRequest(
+        agent_name="Address Only Policy",
+        monthly_budget=100.0,
+        single_tx_limit=10.0,
+        vendor_whitelist=[
+            {
+                "name": "Address Only Agent",
+                "address": "0x1234567890abcdef1234567890abcdef12345678",
+                "chain": "BASE_ETH",
+            }
+        ],
+    )
+
+    provider = req.vendor_whitelist[0]
+    assert provider["address"] == "0x1234567890abcdef1234567890abcdef12345678"
+    assert provider["chain"] == "BASE_ETH"
+    assert provider["source"] == "manual"
 
 
 def test_create_card_request_rejects_manual_x402_provider_without_caw_core_fields():
@@ -50,7 +71,7 @@ def test_create_card_request_rejects_manual_x402_provider_without_caw_core_field
         "single_tx_limit": 10.0,
     }
 
-    for missing_field in ("name", "address", "x402_url", "chain"):
+    for missing_field in ("name", "address", "chain"):
         provider = {
             "name": "Manual Weather API",
             "address": "0x1234567890abcdef1234567890abcdef12345678",
