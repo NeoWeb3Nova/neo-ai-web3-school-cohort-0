@@ -222,6 +222,26 @@ def _vendor_address(vendor_name: str) -> str:
     )
 
 
+def _find_card_vendor(card: Dict[str, Any], vendor: str) -> Optional[Dict[str, Any]]:
+    """Return the selected provider entry from the card's own whitelist.
+
+    Live x402/8004 providers can have addresses fetched from 8004scan that differ
+    from the static fallback registry. For real payments, the card/Pact whitelist is
+    the authority; using the static registry address can make CAW reject an otherwise
+    valid Agent Console payment with "Card does not have permission for this request".
+    """
+    requested = str(vendor or "").strip()
+    requested_lower = requested.lower()
+    for item in card.get("vendor_whitelist") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        address = str(item.get("address") or "").strip()
+        if requested == address or requested_lower == name.lower() or requested_lower == address.lower():
+            return item
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════
 # RealCAWClient
 # ═══════════════════════════════════════════════════════════════
@@ -797,8 +817,15 @@ class RealCAWClient:
         with urllib.request.urlopen(req, timeout=15) as res:
             return json.loads(res.read().decode())
 
-    def _http_post_json(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """CAW REST POST helper. Avoids aiohttp event-loop reuse in FastAPI sync routes."""
+    def _http_post_json(self, path: str, payload: Dict[str, Any], api_key: Optional[str] = None) -> Dict[str, Any]:
+        """CAW REST POST helper. Avoids aiohttp event-loop reuse in FastAPI sync routes.
+
+        The *api_key* parameter overrides the default agent key.  Pact-scoped keys
+        are required for operations that must be evaluated against a specific Pact's
+        policies (e.g. transfers).  Using the agent key causes CAW to evaluate
+        against the wallet's default Pact, which often has no policies and returns
+        INSUFFICIENT_PERMISSION.
+        """
         import urllib.error
         import urllib.request
         import json
@@ -810,7 +837,7 @@ class RealCAWClient:
             data=body,
             method="POST",
             headers={
-                "X-API-Key": self.api_key,
+                "X-API-Key": api_key or self.api_key,
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
@@ -902,10 +929,31 @@ class RealCAWClient:
             "GET /api/v1/wallets/balances returns an address for the payment chain."
         )
 
+    def _fetch_pact_api_key(self, pact_id: str) -> str:
+        """Retrieve the Pact-scoped API key from CAW get_pact.
+
+        CAW list_pacts omits api_key for security, but get_pact includes it.
+        Using the agent key for transfers evaluates against the wallet's default
+        Pact (which usually has no policies), producing INSUFFICIENT_PERMISSION.
+        A Pact-scoped key is required for policy-scoped operations.
+        """
+        try:
+            data = self._http_get_json(f"/api/v1/pacts/{pact_id}", {})
+            result = data.get("result", data)
+            key = result.get("api_key", "")
+            if key:
+                logger.info("[CAW] Fetched Pact-scoped API key for %s", pact_id)
+            return key
+        except Exception as exc:
+            logger.warning("[CAW] Failed to fetch Pact-scoped API key for %s: %s", pact_id, exc)
+            return ""
+
     def _transfer_tokens_via_http(
         self,
         *,
         wallet_uuid: str,
+        pact_id: str,
+        api_key: str,
         src_addr: str,
         dst_addr: str,
         amount: str,
@@ -918,6 +966,10 @@ class RealCAWClient:
         The SDK transfer path uses aiohttp and can reuse a connector bound to a
         different FastAPI event loop. The generated REST client posts to this
         endpoint under the hood, so calling it synchronously avoids the loop bug.
+
+        *api_key* MUST be the Pact-scoped key returned by get_pact.  Using the
+        agent key evaluates against the wallet's default Pact and causes
+        INSUFFICIENT_PERMISSION.
         """
         import urllib.parse
 
@@ -925,6 +977,7 @@ class RealCAWClient:
         return self._http_post_json(
             f"/api/v1/wallets/{wallet_path}/transfer",
             {
+                "pact_id": pact_id,
                 "src_addr": src_addr,
                 "dst_addr": dst_addr,
                 "amount": amount,
@@ -932,6 +985,7 @@ class RealCAWClient:
                 "chain_id": chain_id,
                 "request_id": request_id,
             },
+            api_key=api_key,
         )
 
     # ───────────────────────────────────────────
@@ -954,28 +1008,39 @@ class RealCAWClient:
         meta = metadata or {}
         now = datetime.now(timezone.utc)
         tx_id = f"tx-{uuid.uuid4().hex[:10]}"
-        vendor_addr = _vendor_address(vendor)
+        card_vendor = _find_card_vendor(card, vendor)
+        vendor_addr = str((card_vendor or {}).get("address") or _vendor_address(vendor)).strip()
 
         # ── Stage 1: Permission Check（本地前置校验）──
         if card["status"] != "ACTIVE":
             reason = f"PERMISSION_DENIED: card status is {card['status']}"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["card_status"])
 
         if not card.get("assigned_agent_id"):
             reason = "PERMISSION_DENIED: card_not_assigned"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["card_not_assigned"])
 
         if agent_id != card.get("assigned_agent_id"):
             reason = f"PERMISSION_DENIED: agent_not_assigned ({agent_id} cannot use {card_id})"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["agent_not_assigned"])
 
         if amount <= 0:
             reason = "PERMISSION_DENIED: amount must be positive"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["amount_positive"])
+
+        if not card_vendor:
+            reason = f"POLICY_DENIED: scope_denied ({vendor} is not in card vendor whitelist)"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage2", failed_checks=["scope_denied"])
+
+        if not _is_evm_address(vendor_addr):
+            reason = f"POLICY_DENIED: invalid_vendor_address ({vendor})"
+            tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage2", failed_checks=["invalid_vendor_address"])
 
         # ── Cooldown 检查（本地层实现，因为 Policy Engine 不支持动态时间窗口）──
         cooldown_hours = card.get("cooldown_hours", 0)
@@ -992,7 +1057,7 @@ class RealCAWClient:
                         if now - tx_time < cooldown_delta:
                             reason = f"PERMISSION_DENIED: cooldown {cooldown_hours}h not elapsed since last payment to {vendor}"
                             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
-                            return self._payment_result(tx, card, "DENIED", reason)
+                            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage2", failed_checks=["cooldown_violation"])
                     except (ValueError, KeyError):
                         pass
                     break
@@ -1002,8 +1067,20 @@ class RealCAWClient:
             chain_id = _default_chain()
             token_id = _default_token()
             src_addr = self._resolve_source_address(chain_id, token_id)
+
+            # 使用 Pact-scoped API key 执行 transfer，否则 CAW 会以 wallet 的默认 Pact
+            # 进行权限检查，默认 Pact 通常没有 policies，导致 INSUFFICIENT_PERMISSION。
+            pact_api_key = str(card.get("api_key") or "").strip()
+            if not pact_api_key:
+                pact_api_key = self._fetch_pact_api_key(card_id)
+                if pact_api_key:
+                    card["api_key"] = pact_api_key
+                    self._save_local_card_cache()
+
             result = self._transfer_tokens_via_http(
                 wallet_uuid=self.wallet_uuid,
+                pact_id=card_id,
+                api_key=pact_api_key or getattr(self, "api_key", ""),
                 chain_id=chain_id,
                 src_addr=src_addr,
                 dst_addr=vendor_addr,
@@ -1038,19 +1115,59 @@ class RealCAWClient:
 
         except Exception as exc:
             err_str = str(exc)
-            # 尝试解析 Policy Engine 拒绝原因
-            if any(k in err_str.lower() for k in ("denied", "policy", "limit", "allowlist")):
+            caw_code = ""
+            caw_detail = ""
+            # 尝试从 CAW HTTP 错误 JSON 中提取 error.code
+            try:
+                import json, re
+                # _http_post_json 抛出的格式: HTTP 400 from CAW POST ...: {json}
+                match = re.search(r"\{.*\}", err_str, re.DOTALL)
+                if match:
+                    err_json = json.loads(match.group(0))
+                    caw_error = err_json.get("error", {})
+                    if isinstance(caw_error, dict):
+                        caw_code = caw_error.get("code", "")
+                        caw_detail = caw_error.get("reason", "") or caw_error.get("suggestion", "")
+            except Exception:
+                pass
+
+            # 友好错误映射表
+            friendly_reasons = {
+                "INSUFFICIENT_BALANCE": (
+                    "Policy 校验通过，但钱包余额不足。请充值 Base USDC 或切换至测试网继续演示。"
+                ),
+                "INSUFFICIENT_PERMISSION": (
+                    "Policy 校验失败：权限不足。请确认 Pact 已激活，或检查 Pact-scoped API Key 是否正确。"
+                ),
+            }
+
+            # 判断是否为本地 Policy 拒绝（非 CAW 链上错误）
+            is_policy_local = any(k in err_str.lower() for k in ("denied", "policy", "limit", "allowlist"))
+
+            if caw_code:
                 status = "DENIED"
+                error_code = caw_code
+                reason = friendly_reasons.get(caw_code, f"ERROR: {caw_code} - {caw_detail or err_str}")
+                failed_stage = "onchain"
+                failed_checks = [caw_code.lower().replace(" ", "_")] if caw_code else ["onchain_error"]
+            elif is_policy_local:
+                status = "DENIED"
+                error_code = "POLICY_DENIED"
                 reason = f"POLICY_DENIED: {err_str}"
+                failed_stage = "stage2"
+                failed_checks = ["policy_local"]
             else:
                 status = "DENIED"
+                error_code = "ERROR"
                 reason = f"ERROR: {err_str}"
+                failed_stage = "onchain"
+                failed_checks = ["onchain_error"]
 
             tx = self._record_tx(
                 tx_id, card, vendor, vendor_addr, amount, status, reason,
                 metadata=meta
             )
-            return self._payment_result(tx, card, status, reason)
+            return self._payment_result(tx, card, status, reason, error_code=error_code, failed_stage=failed_stage, failed_checks=failed_checks)
 
     # ───────────────────────────────────────────
     # Audit Pipeline
@@ -1347,6 +1464,9 @@ class RealCAWClient:
         reason: str,
         alert_level: str = "none",
         tx_hash: str = "",
+        error_code: str = "",
+        failed_stage: str = "",
+        failed_checks: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         return {
             "status": status,
@@ -1357,6 +1477,9 @@ class RealCAWClient:
             "remaining_budget": card["budget"]["monthly_max"] - card["budget"].get("spent", 0),
             "tx_hash": tx_hash or tx.get("tx_hash", ""),
             "alert_level": alert_level,
+            "error_code": error_code or "",
+            "failed_stage": failed_stage or "",
+            "failed_checks": failed_checks or [],
         }
 
     # ── SDK 响应解析适配 ──────────────────────────────
@@ -1529,7 +1652,7 @@ class RealCAWClient:
             "time_window": time_window,
             "created_at": created_at,
             "expires_at": expires_at,
-            "api_key": "",
+            "api_key": pact.get("api_key") or "",
             "x402_enabled": any(bool(v.get("x402_url")) for v in vendor_whitelist),
             "x402_url": next((v.get("x402_url") for v in vendor_whitelist if v.get("x402_url")), None),
             "erc8004_agent_id": next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),

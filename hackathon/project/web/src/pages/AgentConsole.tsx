@@ -28,13 +28,68 @@ interface PaymentStep {
 }
 
 const emptySteps = (): PaymentStep[] => [
-  { id: 's1', label: 'x402 payment challenge received', status: 'pending' },
-  { id: 's2', label: 'CAW policy card permission check', status: 'pending' },
-  { id: 's3', label: 'ERC-8004 Identity Registry check', status: 'pending' },
-  { id: 's4', label: 'ERC-8004 Reputation Registry threshold', status: 'pending' },
-  { id: 's5', label: 'ERC-8004 Validation Registry requirement', status: 'pending' },
-  { id: 's6', label: 'Budget, signature and audit record', status: 'pending' },
+  { id: 's1', label: 'Permission Check (Card status & Agent assignment)', status: 'pending' },
+  { id: 's2', label: 'Budget & Per-Transaction Limit', status: 'pending' },
+  { id: 's3', label: 'Vendor Whitelist & Address', status: 'pending' },
+  { id: 's4', label: 'Time Window & Cooldown', status: 'pending' },
+  { id: 's5', label: 'Anomaly Detection (Amount / Freq / Off-hours)', status: 'pending' },
+  { id: 's6', label: 'On-chain Transfer (MPC signature)', status: 'pending' },
 ];
+
+function buildStepsFromResponse(response: PaymentResponse): PaymentStep[] {
+  const base = emptySteps();
+  if (response.status === 'APPROVED') {
+    return base.map((s) => ({ ...s, status: 'success' as const }));
+  }
+
+  const stage = response.failed_stage || '';
+  const checks = response.failed_checks || [];
+
+  return base.map((step, index) => {
+    if (stage === 'stage1') {
+      if (index === 0) return { ...step, status: 'error' as const, detail: checks.join(', ') };
+      return { ...step, status: 'pending' as const };
+    }
+
+    if (stage === 'stage2') {
+      if (index === 0) return { ...step, status: 'success' as const };
+      const s2Checks = ['budget_exceeded', 'per_tx_exceeded'];
+      const s3Checks = ['scope_denied', 'invalid_vendor_address'];
+      const s4Checks = ['time_denied', 'cooldown_violation'];
+      const isS2Error = checks.some((c) => s2Checks.includes(c));
+      const isS3Error = checks.some((c) => s3Checks.includes(c));
+      const isS4Error = checks.some((c) => s4Checks.includes(c));
+      if (index === 1) {
+        if (isS2Error) return { ...step, status: 'error' as const, detail: checks.filter((c) => s2Checks.includes(c)).join(', ') };
+        return { ...step, status: 'success' as const };
+      }
+      if (index === 2) {
+        if (isS3Error) return { ...step, status: 'error' as const, detail: checks.filter((c) => s3Checks.includes(c)).join(', ') };
+        if (!isS2Error) return { ...step, status: 'success' as const };
+        return { ...step, status: 'pending' as const };
+      }
+      if (index === 3) {
+        if (isS4Error) return { ...step, status: 'error' as const, detail: checks.filter((c) => s4Checks.includes(c)).join(', ') };
+        if (!isS2Error && !isS3Error) return { ...step, status: 'success' as const };
+        return { ...step, status: 'pending' as const };
+      }
+      return { ...step, status: 'pending' as const };
+    }
+
+    if (stage === 'stage3') {
+      if (index < 4) return { ...step, status: 'success' as const };
+      if (index === 4) return { ...step, status: 'error' as const, detail: checks.join(', ') };
+      return { ...step, status: 'pending' as const };
+    }
+
+    if (stage === 'onchain') {
+      if (index < 5) return { ...step, status: 'success' as const };
+      return { ...step, status: 'error' as const, detail: checks.join(', ') };
+    }
+
+    return { ...step, status: 'error' as const, detail: response.reason };
+  });
+}
 
 function formatTime(ts: string): string {
   const date = new Date(ts);
@@ -98,9 +153,9 @@ export default function AgentConsole() {
     }
   }, [card?.card_id]);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showPageLoading = true) => {
     try {
-      setLoading(true);
+      if (showPageLoading) setLoading(true);
       const [nextCards, nextTransactions, nextEmployees] = await Promise.all([
         cawApi.listCards(),
         cawApi.listTransactions(),
@@ -119,7 +174,7 @@ export default function AgentConsole() {
       console.warn('[AgentConsole] Backend unreachable:', err);
       setOffline(true);
     } finally {
-      setLoading(false);
+      if (showPageLoading) setLoading(false);
     }
   }, [selectedEmployeeId]);
 
@@ -186,7 +241,9 @@ export default function AgentConsole() {
 
   const isFormValid = !!selectedEmployee && !!card && Object.keys(errors).length === 0 && parseFloat(amount) > 0 && purpose.trim().length > 0 && !!effectiveVendor;
 
-  const friendlyReason = (raw: string): string => {
+  const friendlyReason = (raw: string, errorCode?: string): string => {
+    if (errorCode === 'INSUFFICIENT_BALANCE') return 'Policy 校验通过，但钱包余额不足。请充值 Base USDC 或切换至测试网继续演示。';
+    if (errorCode === 'INSUFFICIENT_PERMISSION') return t('agent.permissionDenied');
     if (raw.includes('scope_denied')) return t('agent.vendorNotWhitelist');
     if (raw.includes('per_tx_exceeded')) return t('agent.perTxExceeded');
     if (raw.includes('budget_exceeded')) return t('agent.budgetExceeded');
@@ -200,8 +257,7 @@ export default function AgentConsole() {
     if (!isFormValid || !card) return;
 
     setIsProcessing(true);
-    const runningSteps = emptySteps().map((step) => ({ ...step, status: 'success' as const }));
-    setResult({ status: 'PENDING_APPROVAL', reason: '', steps: runningSteps });
+    setResult({ status: 'PENDING_APPROVAL', reason: '', steps: emptySteps().map((step) => ({ ...step, status: 'running' as const })) });
 
     try {
       const response = await cawApi.submitPayment({
@@ -221,18 +277,19 @@ export default function AgentConsole() {
         status,
         reason: response.reason,
         response,
-        steps: runningSteps.map((step, index) => ({
-          ...step,
-          status: status === 'APPROVED' || index < 3 ? 'success' : 'error',
-        })),
+        steps: buildStepsFromResponse(response),
       });
-      await loadData();
+      await loadData(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : t('common.error');
       setResult({
         status: 'DENIED',
         reason: message,
-        steps: runningSteps.map((step, index) => ({ ...step, status: index < 2 ? 'success' : 'error' })),
+        steps: emptySteps().map((step, index) => ({
+          ...step,
+          status: index === 0 ? 'error' : 'pending' as const,
+          detail: index === 0 ? message : undefined,
+        })),
       });
     } finally {
       setIsProcessing(false);
@@ -300,7 +357,7 @@ export default function AgentConsole() {
               <CreditCard className="w-4 h-4" strokeWidth={1.5} />
               {t('agent.goToCards')}
             </Link>
-            <button onClick={loadData} className="inline-flex items-center gap-2 px-4 py-2 rounded-im text-sm btn-ghost">
+            <button type="button" onClick={() => loadData()} className="inline-flex items-center gap-2 px-4 py-2 rounded-im text-sm btn-ghost">
               <RefreshCw className="w-4 h-4" strokeWidth={1.5} />
               {t('common.retry')}
             </button>
@@ -572,6 +629,7 @@ export default function AgentConsole() {
               </div>
 
               <button
+                type="button"
                 onClick={submitPayment}
                 disabled={isProcessing || !isFormValid}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-im text-sm btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -610,7 +668,7 @@ export default function AgentConsole() {
                     <h3 className={`text-base font-semibold ${result.status === 'APPROVED' ? 'text-accent-patina' : 'text-accent-coral'}`}>
                       {result.status === 'APPROVED' ? t('agent.paymentApproved') : t('agent.paymentDenied')}
                     </h3>
-                    <p className="text-xs text-text-secondary">{friendlyReason(result.reason)}</p>
+                    <p className="text-xs text-text-secondary">{friendlyReason(result.reason, result.response?.error_code)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -705,6 +763,9 @@ export default function AgentConsole() {
                       <p className={`text-xs font-medium truncate ${step.status === 'success' ? 'text-accent-patina' : step.status === 'running' ? 'text-accent-slate' : step.status === 'error' ? 'text-accent-coral' : 'text-text-secondary'}`}>
                         {step.label}
                       </p>
+                      {step.detail && step.status === 'error' && (
+                        <p className="text-[10px] text-accent-coral truncate mt-0.5">{step.detail}</p>
+                      )}
                     </div>
                     {step.status === 'running' && <ArrowRight className="w-3.5 h-3.5 text-accent-slate animate-pulse shrink-0" strokeWidth={1.5} />}
                   </div>

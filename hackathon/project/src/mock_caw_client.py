@@ -353,22 +353,22 @@ class MockCAWClient:
         if card.status != "ACTIVE":
             reason = f"PERMISSION_DENIED: card status is {card.status}"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["card_status"])
 
         if not card.assigned_agent_id:
             reason = "PERMISSION_DENIED: card_not_assigned"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["card_not_assigned"])
 
         if agent_id != card.assigned_agent_id:
             reason = f"PERMISSION_DENIED: agent_not_assigned ({agent_id} cannot use {card.card_id})"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["agent_not_assigned"])
 
         if amount <= 0:
             reason = "PERMISSION_DENIED: amount must be positive"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, metadata=meta)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage1", failed_checks=["amount_positive"])
 
         # ── Stage 2: Policy Rule Evaluation ──
         checks = []
@@ -401,7 +401,7 @@ class MockCAWClient:
             failed = [c for c in checks if not c.endswith("_ok")]
             reason = f"POLICY_DENIED: {', '.join(failed)}"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason)
-            return self._payment_result(tx, card, "DENIED", reason)
+            return self._payment_result(tx, card, "DENIED", reason, failed_stage="stage2", failed_checks=failed)
 
         # ── Stage 3: Counter / Anomaly Check ──
         alert_level = "none"
@@ -413,29 +413,29 @@ class MockCAWClient:
             avg = sum(hist) / len(hist)
             if avg > 0 and amount > avg * 10:
                 alert_level = "blocked"
-                anomaly_reasons.append(f"AMOUNT_ANOMALY: {amount} vs avg {avg:.2f}")
+                anomaly_reasons.append(f"amount_anomaly: {amount} vs avg {avg:.2f}")
 
         # 3b. 时间异常（凌晨 0-5 点）
         if 0 <= now.hour < 5:
             alert_level = max_alert(alert_level, "human_review")
-            anomaly_reasons.append("OFF_HOURS: 00:00-05:00")
+            anomaly_reasons.append("off_hours: 00:00-05:00")
 
         # 3c. 未知地址（不在 registry）
         if vendor not in self._vendor_registry:
             alert_level = max_alert(alert_level, "blocked")
-            anomaly_reasons.append("UNKNOWN_ADDRESS")
+            anomaly_reasons.append("unknown_address")
 
         # 3d. 频率异常（同一 vendor 1 小时内超过 2 次）
         recent_count = self._count_recent_tx(card.card_id, vendor, hours=1)
         if recent_count >= 2:
             alert_level = max_alert(alert_level, "human_review")
-            anomaly_reasons.append(f"FREQ_ANOMALY: {recent_count} tx in 1h")
+            anomaly_reasons.append(f"freq_anomaly: {recent_count} tx in 1h")
 
         # Anomaly 处理：blocked 立即拒绝；human_review 通过但标记
         if alert_level == "blocked":
             reason = f"ANOMALY_BLOCKED: {' | '.join(anomaly_reasons)}"
             tx = self._record_tx(tx_id, card, vendor, vendor_addr, amount, "DENIED", reason, alert_level)
-            return self._payment_result(tx, card, "DENIED", reason, alert_level)
+            return self._payment_result(tx, card, "DENIED", reason, alert_level, failed_stage="stage3", failed_checks=anomaly_reasons)
 
         # ── 全部通过：MPC 签名模拟 ──
         card.budget.spent += amount
@@ -756,6 +756,9 @@ class MockCAWClient:
         reason: str,
         alert_level: str = "none",
         tx_hash: str = "",
+        error_code: str = "",
+        failed_stage: str = "",
+        failed_checks: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         return {
             "status": status,
@@ -766,6 +769,9 @@ class MockCAWClient:
             "remaining_budget": card.budget.monthly_max - card.budget.spent,
             "tx_hash": tx_hash,
             "alert_level": alert_level,
+            "error_code": error_code or "",
+            "failed_stage": failed_stage or "",
+            "failed_checks": failed_checks or [],
             "timestamp": tx.timestamp,
             "card_id": card.card_id,
             "agent_id": card.assigned_agent_id or card.agent_id,

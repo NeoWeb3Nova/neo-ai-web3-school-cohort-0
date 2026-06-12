@@ -20,6 +20,7 @@ from real_caw_client import (
     ERC8004_IDENTITY_REGISTRY_MAINNET,
     RealCAWClient,
     _build_erc8004_eip712_policy,
+    _find_card_vendor,
 )
 
 
@@ -196,6 +197,80 @@ def test_real_caw_statuses_are_normalized_for_frontend():
     assert client._extract_pact_status({"state": "approval_pending"}) == "PENDING_APPROVAL"
     assert client._extract_pact_status({"pact_status": "WITHDRAWN"}) == "REVOKED"
     assert client._extract_pact_status({"status": None}) == "UNKNOWN"
+
+
+def test_real_caw_payment_uses_card_whitelist_address_for_live_provider():
+    client = RealCAWClient.__new__(RealCAWClient)
+    live_address = "0x84af8bbb6530c11002999104f69d61f241a0d020"
+    card = {
+        "card_id": "card-live-provider",
+        "agent_id": "legacy-card-agent",
+        "agent_name": "Trading Policy Card",
+        "status": "ACTIVE",
+        "assigned_agent_id": "agent-orion-ops",
+        "budget": {"currency": "USDC", "monthly_max": 100.0, "spent": 0.0, "single_tx_limit": 10.0},
+        "vendor_whitelist": [
+            {"name": "Vishwa", "address": live_address, "chain": "Base"},
+        ],
+        "cooldown_hours": 0,
+    }
+    client._cards = {card["card_id"]: card}
+    client._transactions = []
+    client._audit_log = []
+    client.wallet_uuid = "wallet-123"
+
+    captured = {}
+    client._resolve_source_address = lambda chain_id, token_id: "0xSource"
+    client._transfer_tokens_via_http = lambda **kwargs: captured.setdefault("transfer", kwargs) or {"result": {"tx_hash": "0xhash"}}
+
+    response = client.submit_payment(
+        card_id=card["card_id"],
+        agent_id="agent-orion-ops",
+        vendor="Vishwa",
+        amount=0.01,
+    )
+
+    assert response["status"] == "APPROVED"
+    assert captured["transfer"]["dst_addr"] == live_address
+
+
+def test_real_caw_payment_rejects_vendor_outside_card_whitelist_before_transfer():
+    client = RealCAWClient.__new__(RealCAWClient)
+    card = {
+        "card_id": "card-live-provider",
+        "agent_id": "legacy-card-agent",
+        "agent_name": "Trading Policy Card",
+        "status": "ACTIVE",
+        "assigned_agent_id": "agent-orion-ops",
+        "budget": {"currency": "USDC", "monthly_max": 100.0, "spent": 0.0, "single_tx_limit": 10.0},
+        "vendor_whitelist": [
+            {"name": "Vishwa", "address": "0x84af8bbb6530c11002999104f69d61f241a0d020", "chain": "Base"},
+        ],
+        "cooldown_hours": 0,
+    }
+    client._cards = {card["card_id"]: card}
+    client._transactions = []
+    client._audit_log = []
+    client.wallet_uuid = "wallet-123"
+    client._transfer_tokens_via_http = lambda **kwargs: pytest.fail("out-of-scope vendor should not reach CAW transfer")
+
+    response = client.submit_payment(
+        card_id=card["card_id"],
+        agent_id="agent-orion-ops",
+        vendor="Unknown Vendor",
+        amount=0.01,
+    )
+
+    assert response["status"] == "DENIED"
+    assert "scope_denied" in response["reason"]
+
+
+def test_find_card_vendor_matches_by_name_or_address():
+    card = {"vendor_whitelist": [{"name": "Vishwa", "address": "0x84af8bbb6530c11002999104f69d61f241a0d020"}]}
+
+    assert _find_card_vendor(card, "vishwa")["name"] == "Vishwa"
+    assert _find_card_vendor(card, "0x84af8bbb6530c11002999104f69d61f241a0d020")["name"] == "Vishwa"
+    assert _find_card_vendor(card, "twit.sh") is None
 
 
 def test_real_caw_submit_pact_uses_fresh_sdk_client_only():
@@ -604,6 +679,9 @@ def test_real_caw_submit_payment_passes_required_src_addr(monkeypatch):
             "assigned_agent_id": "agent-1",
             "status": "ACTIVE",
             "budget": {"currency": "USDC", "monthly_max": 100.0, "spent": 0.0, "single_tx_limit": 10.0},
+            "vendor_whitelist": [
+                {"name": "twit.sh", "address": "0x4020000000000000000000000000000000000006", "chain": "Base"},
+            ],
             "cooldown_hours": 0,
         }
     }
@@ -614,9 +692,10 @@ def test_real_caw_submit_payment_passes_required_src_addr(monkeypatch):
         async def transfer_tokens(self, **kwargs):  # pragma: no cover - must not be called
             raise AssertionError("SDK transfer_tokens should not be called when HTTP transfer is used")
 
-    def fake_http_post_json(path, payload):
+    def fake_http_post_json(path, payload, api_key=None):
         captured["path"] = path
         captured.update(payload)
+        captured["api_key"] = api_key
         return {"success": True, "result": {"tx_hash": "0xabc"}}
 
     client._client = LoopPoisonedSDK()
@@ -636,6 +715,56 @@ def test_real_caw_submit_payment_passes_required_src_addr(monkeypatch):
     assert captured["dst_addr"] == "0x4020000000000000000000000000000000000006"
     assert captured["chain_id"] == "BASE_ETH"
     assert captured["token_id"] == "BASE_USDC"
+    assert captured["pact_id"] == "card-1"
+    assert captured["api_key"] == ""  # no pact api_key in card, falls back to agent key
+
+
+    def test_real_caw_http_transfer_payload_is_scoped_to_card_pact(monkeypatch):
+    """CAW policy enforcement needs the Pact/Card id on transfer requests.
+
+    The CAW CLI requires --pact-id for `caw tx transfer`; omitting the same
+    scoping from our REST transfer causes CAW to evaluate against the wrong/no
+    card and reject otherwise-whitelisted Agent Console requests.
+    """
+    monkeypatch.setenv("CAW_SRC_ADDR", "0x1111111111111111111111111111111111111111")
+
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._transactions = []
+    client._audit_log = []
+    client._cards = {
+        "pact-live-1": {
+            "card_id": "pact-live-1",
+            "agent_id": "agent-1",
+            "agent_name": "Research Agent",
+            "assigned_agent_id": "agent-1",
+            "status": "ACTIVE",
+            "budget": {"currency": "USDC", "monthly_max": 100.0, "spent": 0.0, "single_tx_limit": 10.0},
+            "vendor_whitelist": [
+                {"name": "twit.sh", "address": "0x4020000000000000000000000000000000000006", "chain": "BASE_ETH"},
+            ],
+            "cooldown_hours": 0,
+        }
+    }
+
+    captured = {}
+
+    def fake_http_post_json(path, payload):
+        captured["path"] = path
+        captured["payload"] = payload
+        return {"success": True, "result": {"tx_hash": "0xabc"}}
+
+    client._http_post_json = fake_http_post_json
+
+    result = client.submit_payment(
+        card_id="pact-live-1",
+        agent_id="agent-1",
+        vendor="twit.sh",
+        amount=0.01,
+    )
+
+    assert result["status"] == "APPROVED"
+    assert captured["payload"]["pact_id"] == "pact-live-1"
 
 
 def test_real_caw_resolves_src_addr_from_balance_records():

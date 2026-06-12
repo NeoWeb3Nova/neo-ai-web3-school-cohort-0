@@ -67,6 +67,9 @@ export type PaymentResponse = {
   remaining_budget: number;
   tx_hash?: string;
   alert_level: string;
+  error_code?: string;
+  failed_stage?: string;
+  failed_checks?: string[];
 };
 
 export type X402Provider = {

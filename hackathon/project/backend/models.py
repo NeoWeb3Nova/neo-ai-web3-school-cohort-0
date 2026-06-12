@@ -131,6 +131,9 @@ class PaymentResponse(BaseModel):
     remaining_budget: float
     tx_hash: Optional[str] = None
     alert_level: str = "none"
+    error_code: Optional[str] = None
+    failed_stage: Optional[str] = None
+    failed_checks: List[str] = []
 
 
 class TransactionRecord(BaseModel):

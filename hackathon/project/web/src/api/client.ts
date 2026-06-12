@@ -103,6 +103,7 @@ export interface PaymentResult {
   remaining_budget: number;
   tx_hash?: string;
   alert_level: string;
+  error_code?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────
