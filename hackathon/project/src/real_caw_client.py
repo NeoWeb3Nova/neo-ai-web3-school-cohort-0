@@ -28,7 +28,7 @@ RealCAWClient — Cobo Agentic Wallet (CAW) 真实 SDK 同步封装
     get_pact(pact_id)
     list_pacts(wallet_id=...)
     revoke_pact(pact_id)
-    transfer_tokens(wallet_uuid, *, dst_addr, amount, token_id, chain_id, request_id)
+    transfer_tokens(wallet_uuid, *, src_addr, dst_addr, amount, token_id, chain_id, request_id)
     list_user_transactions(wallet_uuid, limit)
     list_audit_logs(wallet_id, action, limit)
 """
@@ -41,6 +41,7 @@ import json
 import uuid
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -62,10 +63,13 @@ except ImportError:  # pragma: no cover
 # ═══════════════════════════════════════════════════════════════
 def _sync(coro) -> Any:
     """在同步上下文中执行异步协程。
-    通过 nest_asyncio 允许在已运行的 event loop 中嵌套执行，避免
-    与 uvicorn / FastAPI 的 event loop 冲突。"""
-    import nest_asyncio
-    nest_asyncio.apply()
+    如果 nest_asyncio 可用，则允许在已运行的 event loop 中嵌套执行；
+    否则在普通同步上下文中直接 asyncio.run。"""
+    try:
+        import nest_asyncio  # type: ignore[import-not-found]
+        nest_asyncio.apply()
+    except ImportError:
+        pass
     try:
         loop = asyncio.get_running_loop()
         return loop.run_until_complete(coro)
@@ -79,6 +83,134 @@ def _default_chain() -> str:
 
 def _default_token() -> str:
     return os.getenv("CAW_DEFAULT_TOKEN", "BASE_USDC")
+
+
+def _local_card_cache_path() -> str:
+    """Path for non-secret local Pact metadata that CAW list_pacts may omit."""
+    return os.getenv(
+        "CAW_LOCAL_CARD_CACHE_FILE",
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".local_state", "caw_cards.json"),
+    )
+
+
+ERC8004_IDENTITY_REGISTRY_MAINNET = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+ERC8004_IDENTITY_REGISTRY_TESTNET = "0x8004A818BFB912233c491871b3d84c89A494BD9e"
+
+
+def _default_evm_chain_id(chain_id: Optional[str] = None) -> int:
+    """Map CAW chain labels to EIP-155 IDs used by EIP-712 domains."""
+    chain = (chain_id or _default_chain()).upper()
+    known = {
+        "ETH": 1,
+        "BASE_ETH": 8453,
+        "BASE": 8453,
+        "SETH": 11155111,
+        "BASE_SEPOLIA": 84532,
+        "ARBITRUM_ETH": 42161,
+        "OPTIMISM_ETH": 10,
+        "POLYGON": 137,
+    }
+    if chain in known:
+        return known[chain]
+    return int(os.getenv("CAW_ERC8004_CHAIN_ID", "8453"))
+
+
+def _erc8004_identity_registry_address(chain_id: Optional[str] = None) -> str:
+    """Return the ERC-8004 Identity Registry verifying contract for EIP-712."""
+    override = os.getenv("CAW_ERC8004_IDENTITY_REGISTRY_ADDR", "").strip()
+    if override:
+        return override
+    chain = (chain_id or _default_chain()).upper()
+    if chain in {"SETH", "BASE_SEPOLIA", "ETH_SEPOLIA", "ARBITRUM_TESTNET", "OPTIMISM_TESTNET"}:
+        return ERC8004_IDENTITY_REGISTRY_TESTNET
+    return ERC8004_IDENTITY_REGISTRY_MAINNET
+
+
+def _extract_numeric_agent_ids(*values: Any) -> List[str]:
+    """Extract numeric ERC-8004 token IDs from registry URLs or IDs when present."""
+    agent_ids: List[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        url_match = re.search(r"/agents/(?:[^/]+)/([0-9]+)(?:$|[/?#])", text)
+        colon_match = re.search(r"(?::|#)([0-9]+)$", text)
+        raw = url_match.group(1) if url_match else colon_match.group(1) if colon_match else text if text.isdigit() else ""
+        if raw and raw not in agent_ids:
+            agent_ids.append(raw)
+    return agent_ids
+
+
+def _is_evm_address(value: Any) -> bool:
+    return bool(re.fullmatch(r"0x[a-fA-F0-9]{40}", str(value or "").strip()))
+
+
+def _build_erc8004_eip712_policy(
+    agent_name: str,
+    vendor_whitelist: List[Dict[str, Any]],
+    erc8004_agent_id: Optional[str],
+    erc8004_registry_url: Optional[str],
+) -> Dict[str, Any]:
+    """Build a CAW message_sign policy for ERC-8004 EIP-712 operations.
+
+    The ERC-8004 Identity Registry uses EIP-712 domain
+    name=ERC8004IdentityRegistry, version=1 and type AgentWalletSet for
+    agent-wallet verification. CAW's message_sign policy lets us whitelist that
+    typed-data domain and constrain message fields instead of treating the
+    payload as opaque bytes.
+    """
+    chain = _default_chain()
+    registry_addr = _erc8004_identity_registry_address(chain)
+    agent_ids = _extract_numeric_agent_ids(
+        erc8004_agent_id,
+        erc8004_registry_url,
+        *(v.get("erc8004_agent_id") for v in vendor_whitelist),
+        *(v.get("erc8004_registry_url") for v in vendor_whitelist),
+        *(v.get("token_id") for v in vendor_whitelist),
+    )
+    allowed_wallets = []
+    for vendor in vendor_whitelist:
+        address = str(vendor.get("address") or "").strip()
+        if _is_evm_address(address) and address not in allowed_wallets:
+            allowed_wallets.append(address)
+
+    message_match: List[Dict[str, Any]] = []
+    if agent_ids:
+        message_match.append({"param_name": "agentId", "op": "in", "value": agent_ids})
+    if allowed_wallets:
+        message_match.append({"param_name": "newWallet", "op": "in", "value": allowed_wallets})
+
+    when: Dict[str, Any] = {
+        "chain_in": [chain],
+        "primary_type_in": ["AgentWalletSet"],
+        "domain_match": [
+            {"param_name": "name", "op": "eq", "value": "ERC8004IdentityRegistry"},
+            {"param_name": "version", "op": "eq", "value": "1"},
+            {"param_name": "verifyingContract", "op": "eq", "value": registry_addr},
+        ],
+    }
+    if message_match:
+        when["message_match"] = message_match
+
+    return {
+        "name": f"{agent_name.lower().replace(' ', '-')}-erc8004-eip712-signature-policy",
+        "type": "message_sign",
+        "rules": {
+            "effect": "allow",
+            "when": when,
+            "review_if": {
+                "domain_match": [
+                    {"param_name": "verifyingContract", "op": "eq", "value": registry_addr}
+                ]
+            },
+            "deny_if": {
+                "usage_limits": {
+                    "rolling_1h": {"request_count_gt": 10},
+                    "rolling_24h": {"request_count_gt": 50},
+                }
+            },
+        },
+    }
 
 
 def _vendor_address(vendor_name: str) -> str:
@@ -135,8 +267,10 @@ class RealCAWClient:
         )
         self._owner = os.getenv("CAW_OWNER", "OPC Owner")
 
-        # 本地缓存（真实服务端是权威源，本地仅作辅助）
-        self._cards: Dict[str, Dict[str, Any]] = {}
+        # 本地缓存（真实服务端是权威源，本地仅作辅助）。CAW list_pacts may omit
+        # UI-selected provider names/x402 metadata, so persist non-secret metadata.
+        self._card_cache_path = _local_card_cache_path()
+        self._cards: Dict[str, Dict[str, Any]] = self._load_local_card_cache()
         self._transactions: List[Dict[str, Any]] = []
         self._audit_log: List[Dict[str, Any]] = []
 
@@ -209,6 +343,20 @@ class RealCAWClient:
                 },
             }
         ]
+        policies.append(
+            _build_erc8004_eip712_policy(
+                agent_name=agent_name,
+                vendor_whitelist=vendor_whitelist,
+                erc8004_agent_id=erc8004_agent_id,
+                erc8004_registry_url=erc8004_registry_url,
+            )
+        )
+        erc8004_when = policies[-1]["rules"]["when"]
+        erc8004_agent_ids = ", ".join(
+            ", ".join(str(item) for item in rule["value"])
+            for rule in erc8004_when.get("message_match", [])
+            if rule.get("param_name") == "agentId"
+        ) or "not constrained (no numeric token id supplied)"
 
         completion_conditions = [
             {"type": "time_elapsed", "threshold": str(int(duration_days * 86400))},
@@ -224,9 +372,22 @@ class RealCAWClient:
             f"- Vendors: {', '.join(v['name'] for v in vendor_whitelist)}\n"
             f"- ERC-8004 identity: {erc8004_agent_id or 'not provided'}\n"
             f"- ERC-8004 registry: {erc8004_registry_url or 'not provided'}\n\n"
+            f"# ERC-8004 EIP-712 Signature Authorization\n"
+            f"This Pact uses a CAW `message_sign` policy rather than an opaque ERC-8004 parser. "
+            f"The agent may only request EIP-712 signatures for `AgentWalletSet` typed data on "
+            f"the ERC-8004 Identity Registry domain.\n"
+            f"- Domain name: ERC8004IdentityRegistry\n"
+            f"- Domain version: 1\n"
+            f"- Domain verifyingContract: {erc8004_when['domain_match'][2]['value']}\n"
+            f"- Domain chainId: {_default_evm_chain_id()}\n"
+            f"- Primary type: AgentWalletSet\n"
+            f"- Allowed agentId values: {erc8004_agent_ids}\n"
+            f"- Allowed newWallet values: {', '.join(d['address'] for d in dest_addrs)}\n\n"
             f"# Risk Controls\n"
             f"- Per-tx cap: ${single_tx_limit} (review above ${single_tx_limit * 0.8})\n"
             f"- Monthly cap: ${monthly_budget} (rolling 30d)\n"
+            f"- EIP-712 rate limit: deny above 10 signatures/hour or 50 signatures/day\n"
+            f"- EIP-712 chain check: CAW rejects domain.chainId mismatches\n"
             f"- Cooldown: {cooldown_hours}h between same-vendor payments (enforced locally)\n"
             f"- Expires: {expires.isoformat()}"
         )
@@ -285,6 +446,7 @@ class RealCAWClient:
             "erc8004_agent_id": erc8004_agent_id or next((v.get("erc8004_agent_id") for v in vendor_whitelist if v.get("erc8004_agent_id")), None),
             "erc8004_registry_url": erc8004_registry_url or next((v.get("erc8004_registry_url") for v in vendor_whitelist if v.get("erc8004_registry_url")), None),
         }
+        self._save_local_card_cache()
 
         self._log_audit("PACT_CREATED", pact_id, {
             "agent_name": agent_name,
@@ -324,6 +486,7 @@ class RealCAWClient:
                     # 则我们继续使用 Principal API Key（测试阶段可行）。
                     scoped_key = pact.get("pact_scoped_api_key") or ""
                     card["api_key"] = scoped_key
+                    self._save_local_card_cache()
 
                     self._log_audit("PACT_APPROVED", card_id, {})
                     return {
@@ -367,6 +530,7 @@ class RealCAWClient:
         next_card["assigned_agent_name"] = agent_name
         next_card["assigned_at"] = now
         self._cards[card_id] = next_card
+        self._save_local_card_cache()
         self._log_audit("CARD_ASSIGNED", card_id, {
             "assigned_agent_id": agent_id,
             "assigned_agent_name": agent_name,
@@ -397,6 +561,7 @@ class RealCAWClient:
             logger.warning("[CAW] Pact %s not found on CAW (get_pact failed): %s", card_id, exc)
             card["status"] = "REVOKED"
             card["api_key"] = ""
+            self._save_local_card_cache()
             self._log_audit("PACT_REVOKED", card_id, {"reason": "pact_not_found_on_caw", "note": "local_cleanup_only"})
             return {"card_id": card_id, "status": "REVOKED", "api_key_invalidated": True}
 
@@ -418,6 +583,7 @@ class RealCAWClient:
 
         card["status"] = "REVOKED"
         card["api_key"] = ""
+        self._save_local_card_cache()
 
         self._log_audit("PACT_REVOKED", card_id, {"reason": "owner_manual_revoke"})
         return {"card_id": card_id, "status": "REVOKED", "api_key_invalidated": True}
@@ -429,7 +595,10 @@ class RealCAWClient:
         # 如果本地没有，尝试从 API 获取
         try:
             pact = _sync(self._client.get_pact(card_id))
-            return self._pact_to_card_dict(pact)
+            card = self._merge_api_card_with_local(card_id, self._pact_to_card_dict(pact))
+            self._cards[card_id] = card
+            self._save_local_card_cache()
+            return card
         except Exception as exc:
             raise ValueError(f"Card {card_id} not found: {exc}")
 
@@ -474,9 +643,11 @@ class RealCAWClient:
                 for p in pacts:
                     pid = p.get("pact_id") or p.get("id")
                     if pid:
-                        self._cards[pid] = self._pact_to_card_dict(p)
+                        self._cards[pid] = self._merge_api_card_with_local(pid, self._pact_to_card_dict(p))
             except Exception as exc2:
                 logger.warning("[CAW] SDK list_pacts also failed: %s", exc2)
+
+        self._save_local_card_cache()
 
         cards = [dict(c) for c in self._cards.values()]
         cleaned = [c for c in cards if not self._is_junk_pact(c)]
@@ -673,6 +844,96 @@ class RealCAWClient:
             "balances": balances or [],
         }
 
+    def _resolve_source_address(self, chain_id: str, token_id: str) -> str:
+        """Return the on-chain source address required by CAW transfer_tokens.
+
+        Newer CAW API versions require `src_addr` in addition to the wallet UUID.
+        Prefer an explicit env override, then derive the active wallet address from
+        the balances endpoint because each CAW balance record includes the chain
+        address that owns the asset.
+        """
+        for env_name in (
+            "CAW_SRC_ADDR",
+            "CAW_SOURCE_ADDRESS",
+            "AGENT_WALLET_SRC_ADDR",
+            "AGENT_WALLET_ADDRESS",
+        ):
+            value = os.getenv(env_name, "").strip()
+            if value:
+                return value
+
+        cache_key = f"{chain_id}:{token_id}"
+        cached = getattr(self, "_src_addr_cache", {}).get(cache_key)
+        if cached:
+            return cached
+
+        data = self._http_get_json(
+            "/api/v1/wallets/balances",
+            {"wallet_uuid": self.wallet_uuid, "limit": 50},
+        )
+        result = data.get("result", data)
+        if isinstance(result, dict):
+            balance_records = self._extract_list_items(result, preferred_key="balances")
+        elif isinstance(result, list):
+            balance_records = [item for item in result if isinstance(item, dict)]
+        else:
+            balance_records = []
+
+        def record_address(record: Dict[str, Any]) -> str:
+            return str(record.get("address") or record.get("address_id") or record.get("src_addr") or "").strip()
+
+        candidates = [record for record in balance_records if record_address(record)]
+        ordered = (
+            [r for r in candidates if r.get("chain_id") == chain_id and r.get("token_id") == token_id]
+            or [r for r in candidates if r.get("chain_id") == chain_id]
+            or [r for r in candidates if r.get("token_id") == token_id]
+            or candidates
+        )
+        if ordered:
+            src_addr = record_address(ordered[0])
+            cache = dict(getattr(self, "_src_addr_cache", {}))
+            cache[cache_key] = src_addr
+            self._src_addr_cache = cache
+            return src_addr
+
+        raise ValueError(
+            "CAW transfer_tokens requires src_addr, but no wallet source address "
+            "was found. Set CAW_SRC_ADDR/AGENT_WALLET_ADDRESS or ensure "
+            "GET /api/v1/wallets/balances returns an address for the payment chain."
+        )
+
+    def _transfer_tokens_via_http(
+        self,
+        *,
+        wallet_uuid: str,
+        src_addr: str,
+        dst_addr: str,
+        amount: str,
+        token_id: str,
+        chain_id: str,
+        request_id: str,
+    ) -> Dict[str, Any]:
+        """Initiate a token transfer through synchronous REST instead of the async SDK.
+
+        The SDK transfer path uses aiohttp and can reuse a connector bound to a
+        different FastAPI event loop. The generated REST client posts to this
+        endpoint under the hood, so calling it synchronously avoids the loop bug.
+        """
+        import urllib.parse
+
+        wallet_path = urllib.parse.quote(wallet_uuid, safe="")
+        return self._http_post_json(
+            f"/api/v1/wallets/{wallet_path}/transfer",
+            {
+                "src_addr": src_addr,
+                "dst_addr": dst_addr,
+                "amount": amount,
+                "token_id": token_id,
+                "chain_id": chain_id,
+                "request_id": request_id,
+            },
+        )
+
     # ───────────────────────────────────────────
     # Policy Engine — Payment
     # ───────────────────────────────────────────
@@ -738,23 +999,24 @@ class RealCAWClient:
         request_id = meta.get("request_id") or f"pay-{now.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}"
 
         try:
-            result = _sync(
-                self._client.transfer_tokens(
-                    wallet_uuid=self.wallet_uuid,
-                    chain_id=_default_chain(),
-                    dst_addr=vendor_addr,
-                    token_id=_default_token(),
-                    amount=str(amount),
-                    request_id=request_id,
-                    # TODO: 验证 SDK 是否支持 pact_id 参数
-                    # pact_id=card_id,
-                )
+            chain_id = _default_chain()
+            token_id = _default_token()
+            src_addr = self._resolve_source_address(chain_id, token_id)
+            result = self._transfer_tokens_via_http(
+                wallet_uuid=self.wallet_uuid,
+                chain_id=chain_id,
+                src_addr=src_addr,
+                dst_addr=vendor_addr,
+                token_id=token_id,
+                amount=str(amount),
+                request_id=request_id,
             )
+            result_payload = result.get("result", result) if isinstance(result, dict) else {}
 
             # 解析结果
             tx_status = "APPROVED"
             reason = "All checks passed"
-            tx_hash = result.get("tx_hash") or result.get("transaction_hash") or ""
+            tx_hash = result_payload.get("tx_hash") or result_payload.get("transaction_hash") or ""
 
             # 更新本地预算（真实服务端是权威源，此处仅作估算）
             card["budget"]["spent"] = card["budget"].get("spent", 0) + amount
@@ -994,10 +1256,48 @@ class RealCAWClient:
             # 尝试从 API 刷新
             try:
                 pact = _sync(self._client.get_pact(card_id))
-                self._cards[card_id] = self._pact_to_card_dict(pact)
+                self._cards[card_id] = self._merge_api_card_with_local(card_id, self._pact_to_card_dict(pact))
+                self._save_local_card_cache()
             except Exception as exc:
                 raise ValueError(f"Card {card_id} not found: {exc}")
         return self._cards[card_id]
+
+    def _load_local_card_cache(self) -> Dict[str, Dict[str, Any]]:
+        """Load non-secret local card metadata persisted across backend restarts."""
+        path = getattr(self, "_card_cache_path", _local_card_cache_path())
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except FileNotFoundError:
+            return {}
+        except Exception as exc:
+            logger.warning("[CAW] Failed to load local card metadata cache %s: %s", path, exc)
+            return {}
+
+        cards = payload.get("cards", payload) if isinstance(payload, dict) else {}
+        if not isinstance(cards, dict):
+            return {}
+        return {str(card_id): card for card_id, card in cards.items() if isinstance(card, dict)}
+
+    def _save_local_card_cache(self) -> None:
+        """Persist non-secret card metadata so vendor whitelist survives CAW refreshes/restarts."""
+        if not hasattr(self, "_card_cache_path"):
+            return
+        path = self._card_cache_path
+        safe_cards: Dict[str, Dict[str, Any]] = {}
+        for card_id, card in getattr(self, "_cards", {}).items():
+            if not isinstance(card, dict):
+                continue
+            safe_card = dict(card)
+            # Pact-scoped API keys are credentials; keep them in memory only.
+            safe_card["api_key"] = ""
+            safe_cards[str(card_id)] = safe_card
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"cards": safe_cards}, f, ensure_ascii=False, indent=2, sort_keys=True)
+        except Exception as exc:
+            logger.warning("[CAW] Failed to save local card metadata cache %s: %s", path, exc)
 
     def _log_audit(self, action: str, card_id: str, details: Dict[str, Any]):
         self._audit_log.append({

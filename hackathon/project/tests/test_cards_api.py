@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from pathlib import Path
@@ -15,7 +16,11 @@ import pytest
 from pydantic import ValidationError
 
 from models import CardResponse, CreateCardRequest, TransactionRecord
-from real_caw_client import RealCAWClient
+from real_caw_client import (
+    ERC8004_IDENTITY_REGISTRY_MAINNET,
+    RealCAWClient,
+    _build_erc8004_eip712_policy,
+)
 
 
 def test_create_card_request_accepts_manual_x402_provider_with_optional_metadata():
@@ -224,6 +229,80 @@ def test_real_caw_submit_pact_uses_fresh_sdk_client_only():
     assert captured["args"]["spec"] == {"policies": [], "completion_conditions": []}
 
 
+def test_erc8004_eip712_policy_locks_identity_registry_domain_and_claim_fields():
+    policy = _build_erc8004_eip712_policy(
+        agent_name="Research Agent",
+        erc8004_agent_id="eip155:8453:12345",
+        erc8004_registry_url="https://8004scan.io/agents/base/12345",
+        vendor_whitelist=[
+            {
+                "name": "Verified Provider",
+                "address": "0x1234567890abcdef1234567890abcdef12345678",
+                "chain": "BASE_ETH",
+                "token_id": "12345",
+            }
+        ],
+    )
+
+    assert policy["type"] == "message_sign"
+    when = policy["rules"]["when"]
+    assert when["chain_in"] == ["BASE_ETH"]
+    assert when["primary_type_in"] == ["AgentWalletSet"]
+    assert {rule["param_name"]: rule["value"] for rule in when["domain_match"]} == {
+        "name": "ERC8004IdentityRegistry",
+        "version": "1",
+        "verifyingContract": ERC8004_IDENTITY_REGISTRY_MAINNET,
+    }
+    assert {rule["param_name"]: rule["value"] for rule in when["message_match"]} == {
+        "agentId": ["12345"],
+        "newWallet": ["0x1234567890abcdef1234567890abcdef12345678"],
+    }
+    assert policy["rules"]["deny_if"]["usage_limits"]["rolling_1h"]["request_count_gt"] == 10
+
+
+def test_real_caw_create_card_pact_adds_erc8004_message_sign_policy_and_execution_plan():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._owner = "OPC Owner"
+    client._cards = {}
+    client._transactions = []
+    client._audit_log = []
+
+    captured = {}
+
+    def fake_submit_pact(**kwargs):
+        captured.update(kwargs)
+        return {"pact_id": "pact-erc8004"}
+
+    client._submit_pact_via_fresh_sdk = fake_submit_pact
+
+    pact_id = client.create_card_pact(
+        agent_name="Research Agent",
+        monthly_budget=100.0,
+        single_tx_limit=10.0,
+        vendor_whitelist=[
+            {
+                "name": "Verified Provider",
+                "address": "0x1234567890abcdef1234567890abcdef12345678",
+                "chain": "BASE_ETH",
+                "erc8004_agent_id": "eip155:8453:12345",
+                "erc8004_registry_url": "https://8004scan.io/agents/base/12345",
+                "token_id": "12345",
+            }
+        ],
+        erc8004_agent_id="eip155:8453:12345",
+        erc8004_registry_url="https://8004scan.io/agents/base/12345",
+    )
+
+    assert pact_id == "pact-erc8004"
+    spec = captured["spec"]
+    assert [policy["type"] for policy in spec["policies"]] == ["transfer", "message_sign"]
+    message_policy = spec["policies"][1]
+    assert message_policy["rules"]["when"]["primary_type_in"] == ["AgentWalletSet"]
+    assert "# ERC-8004 EIP-712 Signature Authorization" in spec["execution_plan"]
+    assert "Domain verifyingContract" in spec["execution_plan"]
+
+
 def test_real_caw_list_cards_prefers_sync_http_and_avoids_sdk_loop():
     client = RealCAWClient.__new__(RealCAWClient)
     client.wallet_uuid = "wallet-123"
@@ -362,6 +441,89 @@ def test_real_caw_list_cards_preserves_local_x402_vendor_metadata_after_api_refr
     assert cards[0]["time_window"]["end"] == "2026-07-10T00:00:00+00:00"
 
 
+def test_real_caw_list_cards_preserves_local_vendor_metadata_when_http_falls_back_to_sdk():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._owner = "OPC Owner"
+    client._cards = {
+        "pact-sdk-1": {
+            "card_id": "pact-sdk-1",
+            "agent_name": "SDK Agent",
+            "agent_id": "agent-sdk",
+            "owner": "OPC Owner",
+            "status": "PENDING_APPROVAL",
+            "budget": {"currency": "USDC", "monthly_max": 300.0, "spent": 0.0, "single_tx_limit": 60.0},
+            "vendor_whitelist": [
+                {
+                    "name": "StableEnrich",
+                    "address": "0x4020000000000000000000000000000000000002",
+                    "chain": "BASE_ETH",
+                    "category": "data",
+                    "x402_url": "https://stableenrich.example/x402",
+                }
+            ],
+            "cooldown_hours": 4,
+            "time_window": None,
+            "created_at": "2026-06-10T00:00:00+00:00",
+            "expires_at": "2026-07-10T00:00:00+00:00",
+            "api_key": "",
+            "x402_enabled": True,
+            "x402_url": "https://stableenrich.example/x402",
+        }
+    }
+
+    def fake_http_get_json(path, params):
+        raise RuntimeError("HTTP unavailable")
+
+    class SDKFallback:
+        async def list_pacts(self, **kwargs):
+            return {
+                "pacts": [
+                    {
+                        "pact_id": "pact-sdk-1",
+                        "intent": "Issue spending card for SDK Agent: budget $0/month, tx limit $0",
+                        "status": "APPROVED",
+                        "spec": {"policies": [{"rules": {"when": {"destination_address_in": []}, "deny_if": {}}}]},
+                    }
+                ]
+            }
+
+    client._http_get_json = fake_http_get_json
+    client._client = SDKFallback()
+
+    cards = client.list_cards()
+
+    assert cards[0]["status"] == "ACTIVE"
+    assert cards[0]["vendor_whitelist"][0]["name"] == "StableEnrich"
+    assert cards[0]["budget"]["monthly_max"] == 300.0
+    assert cards[0]["x402_url"] == "https://stableenrich.example/x402"
+
+
+def test_real_caw_local_card_cache_persists_vendor_metadata_without_api_key(tmp_path):
+    cache_file = tmp_path / "caw_cards.json"
+    writer = RealCAWClient.__new__(RealCAWClient)
+    writer._card_cache_path = str(cache_file)
+    writer._cards = {
+        "pact-cache-1": {
+            "card_id": "pact-cache-1",
+            "agent_name": "Cached Agent",
+            "vendor_whitelist": [{"name": "BlockRun AI Gateway", "address": "0x4020000000000000000000000000000000000001"}],
+            "api_key": "secret-pact-scoped-key",
+        }
+    }
+
+    writer._save_local_card_cache()
+
+    raw = json.loads(cache_file.read_text())
+    assert raw["cards"]["pact-cache-1"]["api_key"] == ""
+
+    reader = RealCAWClient.__new__(RealCAWClient)
+    reader._card_cache_path = str(cache_file)
+    loaded = reader._load_local_card_cache()
+
+    assert loaded["pact-cache-1"]["vendor_whitelist"][0]["name"] == "BlockRun AI Gateway"
+
+
 def test_extract_list_items_accepts_caw_list_shapes():
     assert RealCAWClient._extract_list_items([{"id": "a"}, "bad"], "pacts") == [{"id": "a"}]
     assert RealCAWClient._extract_list_items({"pacts": [{"id": "b"}]}, "pacts") == [{"id": "b"}]
@@ -423,6 +585,81 @@ def test_real_caw_transaction_hash_none_normalizes_to_empty_string():
     assert tx["status"] == "DENIED"
     assert tx["tx_hash"] == ""
     assert TransactionRecord(**tx).tx_hash == ""
+
+
+def test_real_caw_submit_payment_passes_required_src_addr(monkeypatch):
+    monkeypatch.setenv("CAW_SRC_ADDR", "0x1111111111111111111111111111111111111111")
+    monkeypatch.setenv("CAW_DEFAULT_CHAIN", "BASE_ETH")
+    monkeypatch.setenv("CAW_DEFAULT_TOKEN", "BASE_USDC")
+
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+    client._transactions = []
+    client._audit_log = []
+    client._cards = {
+        "card-1": {
+            "card_id": "card-1",
+            "agent_id": "agent-1",
+            "agent_name": "Research Agent",
+            "assigned_agent_id": "agent-1",
+            "status": "ACTIVE",
+            "budget": {"currency": "USDC", "monthly_max": 100.0, "spent": 0.0, "single_tx_limit": 10.0},
+            "cooldown_hours": 0,
+        }
+    }
+
+    captured = {}
+
+    class LoopPoisonedSDK:
+        async def transfer_tokens(self, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("SDK transfer_tokens should not be called when HTTP transfer is used")
+
+    def fake_http_post_json(path, payload):
+        captured["path"] = path
+        captured.update(payload)
+        return {"success": True, "result": {"tx_hash": "0xabc"}}
+
+    client._client = LoopPoisonedSDK()
+    client._http_post_json = fake_http_post_json
+
+    result = client.submit_payment(
+        card_id="card-1",
+        agent_id="agent-1",
+        vendor="twit.sh",
+        amount=0.01,
+        metadata={"request_id": "pay-test"},
+    )
+
+    assert result["status"] == "APPROVED"
+    assert captured["path"] == "/api/v1/wallets/wallet-123/transfer"
+    assert captured["src_addr"] == "0x1111111111111111111111111111111111111111"
+    assert captured["dst_addr"] == "0x4020000000000000000000000000000000000006"
+    assert captured["chain_id"] == "BASE_ETH"
+    assert captured["token_id"] == "BASE_USDC"
+
+
+def test_real_caw_resolves_src_addr_from_balance_records():
+    client = RealCAWClient.__new__(RealCAWClient)
+    client.wallet_uuid = "wallet-123"
+
+    def fake_http_get_json(path, params):
+        assert path == "/api/v1/wallets/balances"
+        assert params["wallet_uuid"] == "wallet-123"
+        return {
+            "success": True,
+            "result": [
+                {
+                    "chain_id": "BASE_ETH",
+                    "token_id": "BASE_USDC",
+                    "amount": "1.23",
+                    "address": "0x2222222222222222222222222222222222222222",
+                }
+            ],
+        }
+
+    client._http_get_json = fake_http_get_json
+
+    assert client._resolve_source_address("BASE_ETH", "BASE_USDC") == "0x2222222222222222222222222222222222222222"
 
 
 def test_transaction_record_normalizes_null_string_fields():
