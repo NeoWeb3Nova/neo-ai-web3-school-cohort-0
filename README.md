@@ -24,11 +24,12 @@
 
 ---
 
-## Week 1 Proof-of-Work Pack
+## Week 1 Build Log 与分轨选择
 
-> **总入口链接（本仓库即 Pack）**: https://github.com/NeoWeb3Nova/neo-ai-web3-school-cohort-0
-> **Pack 文件**: [submissions/week1-proof-of-work-pack.md](submissions/week1-proof-of-work-pack.md)
-> **提交时间**: 2026-05-26
+> **Week 1 Build Log 初稿**: [submissions/week1-build-log.md](submissions/week1-build-log.md)  
+> **方向选择（Tech）**: [submissions/week2-track-choice-tech.md](submissions/week2-track-choice-tech.md)  
+> **原 Proof-of-Work Pack**: [submissions/week1-proof-of-work-pack.md](submissions/week1-proof-of-work-pack.md)  
+> **提交时间**: 2026-05-26（Pack） / 2026-07-11（Build Log 补档）  
 > **学员**: Neo（GitHub: NeoWeb3Nova）
 
 ---
